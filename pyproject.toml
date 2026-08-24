@@ -12,13 +12,9 @@ classifiers = [
     "Programming Language :: Python"
 ]
 dependencies = [
-    "diffrax>=0.7.2",
-    "equinox>=0.13.7",
-    "jax>=0.10.0",
-    "lineax>=0.1.0",
-    "optax>=0.2.8",
-    "pydantic>=2.13.3",
-    "pydantic-settings>=2.14.0",
+    "equinox>=0.13.8",
+    "jax>=0.11.1",
+    "pydantic>=2.13.4",
 ]
 
 [project.optional-dependencies]
@@ -47,25 +43,18 @@ combine-as-imports = true
 lines-after-imports = 2
 order-by-type = false
 
-[tool.pyrefly]
-project-includes = [
-    "**/*.py*",
-    "**/*.ipynb",
-]
-
 [dependency-groups]
 dev = [
-    "pre-commit>=4.6.0",
-    "ipykernel>=7.2.0",
+    "pre-commit>=4.6.2",
+    "ipykernel>=7.3.0",
     "rich>=15.0.0",
-    "ruff>=0.15.12",
-    "matplotlib>=3.10.9",
+    "ruff>=0.16.4",
+    "matplotlib>=3.11.1",
     "pyqt6>=6.11.0",
-    "ty>=0.0.63"
-    # "ty>=0.0.63; sys_platform != 'linux' or platform_machine != 'x86_64'",
+    "ty>=0.0.74"
 ]
-docs = ["zensical>=0.0.29"]
+docs = ["zensical>=0.0.57"]
 test = [
     "beartype>=0.22.9",
-    "pytest>=9.0.3"
+    "pytest>=9.1.1"
 ]
