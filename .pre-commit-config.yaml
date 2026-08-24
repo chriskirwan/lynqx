@@ -1,0 +1,26 @@
+default_install_hook_types:
+  - pre-commit
+  - post-checkout
+  - post-merge
+  - post-rewrite
+repos:
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  # ruff version
+  rev: v0.14.14
+  hooks:
+    - id: ruff-format # formatter
+      types_or: [python, pyi, jupyter, toml]
+    - id: ruff-check # linter
+      types_or: [python, pyi, jupyter, toml]
+      args: [--fix]
+- repo: https://github.com/astral-sh/uv-pre-commit
+  # uv version.
+  rev: 0.10.1
+  hooks:
+    # Update the uv lockfile
+    - id: uv-lock
+- repo: https://github.com/astral-sh/ty-pre-commit
+  # ty version.
+  rev: v0.0.63
+  hooks:
+    - id: ty
