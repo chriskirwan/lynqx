@@ -111,7 +111,7 @@ class NamedArrayImpl(NamedArray, eqx.Module):
     # matplotlib compability
     def __array__(self, dtype: np.dtype | None = None, copy: bool | None = None):
         kwds = {} if copy is None else {"copy": copy}
-        return np.asarray(self.array, dtype=dtype, **kwds)  # ty: ignore[no-matching-overload]
+        return np.asarray(self.array, dtype=dtype, **kwds)  # pyrefly: ignore[no-matching-overload]
 
     def __bool__(self):
         return bool(self.array)
