@@ -2,8 +2,7 @@ from collections.abc import Mapping
 from types import UnionType
 from typing import Literal, NamedTuple, overload, Sequence
 
-from lynqx._src.axis import Axis
-from lynqx._src.typing import AxisDict, AxisLike, AxisSelection, AxisSelector, AxisShape, AxisSpec
+from lynqx._src.axis import Axis, AxisDict, AxisLike, AxisSelection, AxisSelector, AxisShape, AxisSpec
 
 
 # validation

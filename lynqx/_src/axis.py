@@ -1,6 +1,8 @@
 import keyword
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from typing import TypeAlias
 
 
 _AXIS_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -42,3 +44,13 @@ class Axis:
     @property
     def label(self) -> str:
         return self.name if self.name is not None else "?"
+
+
+AxisDict = Mapping[str, int]
+AxisLike: TypeAlias = str | Axis
+
+AxisShape: TypeAlias = Axis | Sequence[Axis] | AxisDict
+AxisSpec: TypeAlias = AxisLike | Sequence[AxisLike]
+
+AxisSelector: TypeAlias = int | AxisLike
+AxisSelection: TypeAlias = AxisSelector | Sequence[int | AxisLike]
