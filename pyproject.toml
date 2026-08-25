@@ -43,6 +43,15 @@ combine-as-imports = true
 lines-after-imports = 2
 order-by-type = false
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra"]
+
+[tool.pyrefly]
+project-excludes = [
+    "tests/**"
+]
+
 [dependency-groups]
 dev = [
     "pre-commit>=4.6.2",
@@ -51,7 +60,7 @@ dev = [
     "ruff>=0.16.4",
     "matplotlib>=3.11.1",
     "pyqt6>=6.11.0",
-    "ty>=0.0.74"
+    "pyrefly>=1.2.0",
 ]
 docs = ["zensical>=0.0.57"]
 test = [
