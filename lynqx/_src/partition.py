@@ -1,10 +1,10 @@
 from collections.abc import Mapping
+from typing import TypeAlias
 
-from jax import P
+from jax import NamedSharding, P
 
-from lynqx._src.axis import Axis
+from lynqx._src.axis import Axis, AxisLike, AxisSpec
 from lynqx._src.axis_util import axis_spec_to_tuple
-from lynqx._src.typing import AxisLike, AxisSpec
 
 
 LogicalAxis = str | Axis
@@ -84,3 +84,6 @@ def union_partitions(left: PM, right: PM) -> PM:
             merged[axis] = partition
 
     return PM(merged)
+
+
+ShardingLike: TypeAlias = P | PM | NamedSharding
