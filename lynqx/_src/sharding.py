@@ -86,7 +86,7 @@ def _flatten_pytree_shardings(
     fn_name: str,
     xs: PyTree,
     shardings: PyTree,
-) -> tuple[list[Any], Any, list[Device | NamedSharding | P | None]]:
+) -> tuple[list[PyTree], list[Device | NamedSharding | P | None], PyTree]:
     flat_xs, treedef = jax.tree.flatten(xs, is_leaf=is_named_array)
     for x in flat_xs:
         assert_single_array_leaf(x, fn_name)
