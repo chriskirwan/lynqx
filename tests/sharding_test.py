@@ -19,9 +19,7 @@ code:
   wrapped in `jax.jit`, with `in_shardings`/`out_shardings` derived from a
   `PM`, a `with_sharding_constraint` on an intermediate value, and
   `auto_mesh_axes` used to drop a subroutine into Auto-sharding mode inside
-  an otherwise Explicit-sharded jit. `_dummy_contract` is a stand-in for a
-  future real op (e.g. `lynqx.named.dot`) -- swap it out once that exists,
-  the surrounding sharding-composability assertions should still hold.
+  an otherwise Explicit-sharded jit.
 """
 
 from typing import Any
@@ -42,9 +40,6 @@ from lynqx._src.sharding import (
 from lynqx._src.typing import AxisShape, PM
 
 
-# from lynqx._src.named import asnamed, zeros  # NOTE: adjust path if different in-repo
-
-
 def named(a: Any, shape: AxisShape):
     shape = axis_shape_to_tuple(shape)
     return NamedArrayImpl(a, shape)
@@ -58,7 +53,7 @@ def zeros(shape: AxisShape):
 
 
 def _dummy_contract(a, b):
-    """Placeholder for a future non-trivial lynqx op (e.g. `named.dot`).
+    """Placeholder for a future non-trivial lynqx op.
 
     Contracts the trailing axis of two equally-shaped arrays down to one
     value per row. Deliberately not a `NamedArray` op: it's here purely to
