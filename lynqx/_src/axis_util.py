@@ -1,11 +1,75 @@
-from collections.abc import Mapping
+from collections import defaultdict
+from collections.abc import Callable, Iterable, Mapping
+from functools import wraps
+from inspect import signature
 from types import UnionType
-from typing import Literal, NamedTuple, overload, Sequence
+from typing import Literal, NamedTuple, overload, ParamSpec, Sequence, TypeVar
 
 from lynqx._src.axis import Axis, AxisDict, AxisLike, AxisSelection, AxisSelector, AxisShape, AxisSpec
 
 
 # validation
+
+P = ParamSpec("P")
+T = TypeVar("T")
+
+
+@overload
+def validate_unique_axes(fn: Callable[P, T], *, arg_names: Iterable[str]) -> Callable[P, T]: ...
+
+
+@overload
+def validate_unique_axes(*, arg_names: Iterable[str]) -> Callable[[Callable[P, T]], Callable[P, T]]: ...
+
+
+def validate_unique_axes(fn=None, *, arg_names: Iterable[str]):
+    if fn is None:
+        return lambda func: _validate_unique_axes(func, arg_names=arg_names)
+    return _validate_unique_axes(fn, arg_names=arg_names)
+
+
+def _validate_unique_axes(fn: Callable[P, T], *, arg_names: Iterable[str]) -> Callable[P, T]:
+    @wraps(fn)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        sig = signature(fn)
+        bound = sig.bind(*args, **kwargs)
+        bound.apply_defaults()
+
+        for name in arg_names:
+            value = bound.arguments.get(name)
+            if value is not None:
+                check_unique_axis_names(bound.arguments[name])
+
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
+def check_unique_axis_names(axes: AxisSpec):
+    if isinstance(axes, (Axis, str)):
+        axes = (axes,)
+
+    axes = axis_spec_to_tuple(axes)
+
+    if not isinstance(axes, Sequence) or isinstance(axes, (bytes, bytearray)):
+        raise TypeError(f"Expected AxisSelector, got {type(axes).__name__}")
+
+    name_to_indices = defaultdict(list)
+
+    for i, axis in enumerate(axes):
+        if not isinstance(axis, AxisLike):
+            raise TypeError(f"Expected `Axis` or `str`  at index {i} in {axes}, but got {type(axis)}.")
+
+        name = _axis_name(axis)
+        if name is None:
+            continue
+
+        name_to_indices[name].append(i)
+
+    duplicates = {name: indices for name, indices in name_to_indices.items() if len(indices) > 1}
+    if duplicates:
+        msg = ", ".join([f"'{n}' at {idx}" for n, idx in duplicates.items()])
+        raise ValueError(f"Duplicate axis names detected: {msg}")
 
 
 def is_axis_compatible(a: Axis, b: Axis):
@@ -316,6 +380,7 @@ def match_axes(
 # operations
 
 
+@validate_unique_axes(arg_names=("a", "b"))
 def union_axes(a: Sequence[Axis], b: Sequence[Axis]) -> tuple[Axis, ...]:
     """Return the ordered union of two axis sequences.
 
@@ -352,6 +417,7 @@ def union_axes(a: Sequence[Axis], b: Sequence[Axis]) -> tuple[Axis, ...]:
     return tuple(result)
 
 
+@validate_unique_axes(arg_names=("a", "b"))
 def intersect_axes(a: Sequence[Axis], b: Sequence[Axis]) -> tuple[Axis, ...]:
     """Return axes from ``a`` whose names occur in ``b``.
 
