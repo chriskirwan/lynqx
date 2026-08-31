@@ -3,8 +3,17 @@ import os
 
 os.environ.setdefault("XLA_FLAGS", "--xla_force_host_platform_device_count=8")
 
-import jax  # noqa: E402
-import pytest  # noqa: E402
+import jax
+import pytest
+from hypothesis import HealthCheck, settings
+
+
+# JIT compilation can comfortably blow past hypothesis's default 200ms deadline -- that's a compile-time cost, not a
+# regression, and treating it as one just makes the suite flaky.
+settings.register_profile("default", deadline=None, suppress_health_check=[HealthCheck.too_slow])
+settings.register_profile("ci", deadline=None, max_examples=200)
+settings.register_profile("dev", deadline=None, max_examples=25)
+settings.load_profile("default")
 
 
 @pytest.fixture(scope="session")
