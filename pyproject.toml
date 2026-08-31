@@ -65,5 +65,6 @@ dev = [
 docs = ["zensical>=0.0.57"]
 test = [
     "beartype>=0.22.9",
+    "hypothesis>=6.165.10",
     "pytest>=9.1.1"
 ]
