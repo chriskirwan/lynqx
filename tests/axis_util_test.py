@@ -33,13 +33,34 @@ from strategies import (
 )
 
 
-# Shared axis literals reused across the set-like algebra tests below
-# (union/intersect/concatenate/remove/replace) so those tests aren't each
-# re-declaring `Axis(4, "x")` from scratch.
-X4 = Axis(4, "x")
-X8 = Axis(8, "x")  # same name as X4, conflicting size -- for conflict tests
-Y8 = Axis(8, "y")
-Z16 = Axis(16, "z")
+@pytest.fixture
+def x4():
+    return Axis(4, "x")
+
+
+@pytest.fixture
+def x8():
+    return Axis(8, "x")
+
+
+@pytest.fixture
+def y8():
+    return Axis(8, "y")
+
+
+@pytest.fixture
+def z16():
+    return Axis(16, "z")
+
+
+@pytest.fixture
+def standard_selection():
+    return (Axis(4, "batch"), Axis(8, "head"), Axis(16))
+
+
+# ---------------------------------------------------------------------------
+# Compatibility
+# ---------------------------------------------------------------------------
 
 
 class TestIsAxisCompatible:
@@ -67,12 +88,6 @@ class TestIsAxisCompatible:
     def test_compatibility_matrix(self, a, b, expected):
         assert is_axis_compatible(a, b) is expected
 
-    # Symmetry itself is a general property, not a specific case -- see
-    # TestIsAxisCompatibleProperties below, which fuzzes it across named,
-    # anonymous, and mixed pairs rather than one hand-picked equal pair.
-
-
-class TestIsAxisCompatibleProperties:
     @given(axes_strategy, axes_strategy)
     def test_symmetric(self, a, b):
         assert is_axis_compatible(a, b) == is_axis_compatible(b, a)
@@ -82,64 +97,56 @@ class TestIsAxisCompatibleProperties:
         assert is_axis_compatible(a, a) is True
 
 
+# ---------------------------------------------------------------------------
+# Unique Axis Checking & Validation
+# ---------------------------------------------------------------------------
+
+
 class TestCheckUniqueAxisNames:
-    def test_allows_disjoint_named_axes(self):
-        check_unique_axis_names((X4, Y8))  # must not raise
+    def test_allows_disjoint_named_axes(self, x4, y8):
+        check_unique_axis_names((x4, y8))
 
     def test_allows_repeated_anonymous_axes(self):
-        check_unique_axis_names((Axis(4), Axis(4), Axis(8)))  # must not raise
+        check_unique_axis_names((Axis(4), Axis(4), Axis(8)))
 
     def test_allows_bare_string_specs_with_distinct_names(self):
-        check_unique_axis_names(("x", "y"))  # must not raise
+        check_unique_axis_names(("x", "y"))
 
     def test_bare_string_and_axis_object_with_same_name_collide(self):
-        # A bare string *is* its own name, so `"x"` and `Axis(4, "x")` are
-        # the same collision as two `Axis` objects sharing a name.
         with pytest.raises(ValueError, match="'x'"):
             check_unique_axis_names(("x", Axis(4, "x")))
 
-    def test_duplicate_named_axis_raises(self):
+    def test_duplicate_named_axis_raises(self, x4, x8):
         with pytest.raises(ValueError, match="'x'"):
-            check_unique_axis_names((X4, X8))  # same name, different size
+            check_unique_axis_names((x4, x8))
 
-    def test_duplicate_error_lists_every_colliding_index(self):
-        axes = (X4, Y8, Axis(2, "x"), Axis(1, "x"))
+    def test_duplicate_error_lists_every_colliding_index(self, x4, y8):
+        axes = (x4, y8, Axis(2, "x"), Axis(1, "x"))
         with pytest.raises(ValueError, match=r"'x' at \[0, 2, 3\]"):
             check_unique_axis_names(axes)
 
-    def test_multiple_different_duplicate_names_all_reported(self):
-        axes = (X4, X8, Y8, Axis(1, "y"))
+    def test_multiple_different_duplicate_names_all_reported(self, x4, x8, y8):
+        axes = (x4, x8, y8, Axis(1, "y"))
         with pytest.raises(ValueError) as exc_info:
             check_unique_axis_names(axes)
         assert "'x'" in str(exc_info.value)
         assert "'y'" in str(exc_info.value)
 
-    def test_single_bare_axis_is_normalized_to_a_one_tuple(self):
-        check_unique_axis_names(X4)  # must not raise -- trivially unique
+    def test_single_bare_axis_is_normalized_to_a_one_tuple(self, x4):
+        check_unique_axis_names(x4)
 
     def test_single_bare_string_is_normalized_to_a_one_tuple(self):
-        # Also confirms the string isn't iterated character-by-character
-        # (which would otherwise "duplicate" any repeated letter).
-        check_unique_axis_names("xx")  # must not raise
+        check_unique_axis_names("xx")
 
     def test_non_iterable_scalar_raises_type_error(self):
         with pytest.raises(TypeError):
             check_unique_axis_names(5)
 
-    def test_non_axislike_element_raises_type_error_naming_its_index(self):
+    def test_non_axislike_element_raises_type_error_naming_its_index(self, x4):
         with pytest.raises(TypeError, match="index 1"):
-            check_unique_axis_names([X4, 5])
+            check_unique_axis_names([x4, 5])
 
     def test_bytes_input_raises_type_error(self):
-        # NOTE: `axes` is reassigned to `axis_spec_to_tuple(axes)` *before*
-        # the `isinstance(axes, (bytes, bytearray))` guard runs, and
-        # `axis_spec_to_tuple` always returns a plain `tuple` -- so that
-        # guard can never actually see a `bytes`/`bytearray` value and is
-        # currently dead code. What actually raises here is the per-element
-        # `AxisLike` check one level down (bytes iterate into ints), with a
-        # less specific message than "Expected AxisSelector, got bytes"
-        # would give. If the more specific message matters, the guard
-        # needs to run *before* the `axis_spec_to_tuple` call instead.
         with pytest.raises(TypeError):
             check_unique_axis_names(b"ab")
 
@@ -147,7 +154,7 @@ class TestCheckUniqueAxisNames:
 class TestCheckUniqueAxisNamesProperties:
     @given(disjoint_named_axis_tuples())
     def test_never_raises_on_disjoint_named_axes(self, axes):
-        check_unique_axis_names(axes)  # must not raise
+        check_unique_axis_names(axes)
 
     @given(duplicate_named_axis_pair(), disjoint_named_axis_tuples())
     def test_always_raises_on_a_duplicate_pair_anywhere_in_the_input(self, pair, rest):
@@ -157,96 +164,79 @@ class TestCheckUniqueAxisNamesProperties:
 
     @given(st.integers(min_value=0, max_value=5))
     def test_any_number_of_anonymous_axes_never_collide(self, n):
-        check_unique_axis_names(tuple(Axis(4) for _ in range(n)))  # must not raise
+        check_unique_axis_names(tuple(Axis(4) for _ in range(n)))
 
 
 class TestValidateUniqueAxes:
-    """Unit tests for the decorator via small dummy functions -- these
-    exercise the wrapping/binding machinery itself, independent of which
-    real functions it ends up applied to."""
-
-    def test_decorator_factory_form_passes_valid_input_through(self):
+    def test_decorator_factory_form_passes_valid_input_through(self, x4, y8):
         @validate_unique_axes(arg_names=("axes",))
         def fn(axes):
             return axes
 
-        assert fn((X4, Y8)) == (X4, Y8)
+        assert fn((x4, y8)) == (x4, y8)
 
-    def test_decorator_factory_form_raises_on_duplicate(self):
+    def test_decorator_factory_form_raises_on_duplicate(self, x4, x8):
         @validate_unique_axes(arg_names=("axes",))
         def fn(axes):
             return axes
 
         with pytest.raises(ValueError):
-            fn((X4, X8))
+            fn((x4, x8))
 
-    def test_direct_call_form_is_equivalent_to_decorator_form(self):
+    def test_direct_call_form_is_equivalent_to_decorator_form(self, x4, x8, y8):
         def fn(axes):
             return axes
 
         wrapped = validate_unique_axes(fn, arg_names=("axes",))
 
-        assert wrapped((X4, Y8)) == (X4, Y8)
+        assert wrapped((x4, y8)) == (x4, y8)
         with pytest.raises(ValueError):
-            wrapped((X4, X8))
+            wrapped((x4, x8))
 
-    def test_only_the_named_parameters_are_validated(self):
+    def test_only_the_named_parameters_are_validated(self, x4):
         @validate_unique_axes(arg_names=("a",))
         def fn(a, b):
             return a, b
 
-        # `b` is malformed but not in `arg_names`, so it's left untouched.
-        assert fn((X4,), (X4, X4)) == ((X4,), (X4, X4))
+        assert fn((x4,), (x4, x4)) == ((x4,), (x4, x4))
 
-    def test_each_named_parameter_is_checked_independently(self):
+    def test_each_named_parameter_is_checked_independently(self, x4, x8, y8):
         @validate_unique_axes(arg_names=("a", "b"))
         def fn(a, b):
             return a, b
 
         with pytest.raises(ValueError):
-            fn((X4, X8), (Y8,))
+            fn((x4, x8), (y8,))
         with pytest.raises(ValueError):
-            fn((X4,), (Y8, Y8))
+            fn((x4,), (y8, y8))
 
-    def test_works_with_positional_and_keyword_calls(self):
+    def test_works_with_positional_and_keyword_calls(self, x4, x8):
         @validate_unique_axes(arg_names=("axes",))
         def fn(x, axes):
             return x, axes
 
         with pytest.raises(ValueError):
-            fn(1, (X4, X8))
+            fn(1, (x4, x8))
         with pytest.raises(ValueError):
-            fn(1, axes=(X4, X8))
+            fn(1, axes=(x4, x8))
         with pytest.raises(ValueError):
-            fn(x=1, axes=(X4, X8))
+            fn(x=1, axes=(x4, x8))
 
     def test_missing_value_is_skipped_not_validated(self):
-        # `if value is not None` means an omitted (default-`None`) or
-        # explicitly-`None` argument is skipped entirely, letting a
-        # parameter be genuinely optional rather than forced to always
-        # supply a well-formed axes sequence.
         @validate_unique_axes(arg_names=("axes",))
         def fn(axes=None):
             return axes
 
-        assert fn() is None  # default applied, then skipped
-        assert fn(axes=None) is None  # explicit None, also skipped
+        assert fn() is None
+        assert fn(axes=None) is None
 
-    def test_typo_in_arg_names_silently_skips_validation(self):
-        # `bound.arguments.get(name)` -- not `[name]` -- means a typo'd or
-        # stale `arg_names` entry doesn't fail loudly: it just isn't found
-        # in `bound.arguments`, `.get()` returns None, and validation for
-        # that entry is silently skipped. This test documents that as
-        # current behavior, not as something asserted to be correct --
-        # worth deciding deliberately whether a typo should instead raise
-        # (e.g. `bound.arguments[name]`, or validating `arg_names` against
-        # `inspect.signature(fn).parameters` once, at decoration time).
-        @validate_unique_axes(arg_names=("axess",))  # typo: should be "axes"
+    def test_typo_in_arg_names_silently_skips_validation(self, x4, x8):
+        @validate_unique_axes(arg_names=("axess",))
         def fn(axes):
             return axes
 
-        result = fn((X4, X8))  # genuinely duplicate-named -- does NOT raise
-        assert result == (X4, X8)
+        result = fn((x4, x8))
+        assert result == (x4, x8)
 
     def test_wraps_preserves_name_and_docstring(self):
         @validate_unique_axes(arg_names=("axes",))
@@ -258,61 +248,54 @@ class TestValidateUniqueAxes:
         assert some_fn.__doc__ == "Some docstring."
 
 
-class TestAxisSpecToTuple:
-    _ax = Axis(4, "batch")
+# ---------------------------------------------------------------------------
+# Normalization & Spec Conversion (Consolidated)
+# ---------------------------------------------------------------------------
 
+
+class TestAxisNormalization:
     @pytest.mark.parametrize(
-        "spec,expected",
+        "func, input_spec, expected",
         [
-            ("batch", ("batch",)),
-            (_ax, (_ax,)),
-            (["batch", _ax], ("batch", _ax)),
-            ([], ()),
+            (axis_spec_to_tuple, "batch", ("batch",)),
+            (axis_spec_to_tuple, Axis(4, "batch"), (Axis(4, "batch"),)),
+            (axis_spec_to_tuple, ["batch", Axis(4, "batch")], ("batch", Axis(4, "batch"))),
+            (axis_spec_to_tuple, [], ()),
+            (axis_shape_to_tuple, Axis(4, "x"), (Axis(4, "x"),)),
+            (axis_shape_to_tuple, (Axis(4, "x"), Axis(8)), (Axis(4, "x"), Axis(8))),
+            (axis_shape_to_tuple, {"x": 4, "y": 8}, (Axis(4, "x"), Axis(8, "y"))),
+            (axis_selection_to_tuple, "batch", ("batch",)),
+            (axis_selection_to_tuple, 0, (0,)),
+            (axis_selection_to_tuple, ["batch", 1], ("batch", 1)),
         ],
-        ids=["single_string", "single_axis_object", "iterable_of_mixed_axislike", "empty_iterable"],
+        ids=[
+            "spec_single_string",
+            "spec_single_axis_object",
+            "spec_iterable_mixed",
+            "spec_empty",
+            "shape_single_axis",
+            "shape_iterable_axes",
+            "shape_mapping",
+            "selection_string",
+            "selection_int",
+            "selection_list",
+        ],
     )
-    def test_normalizes_to_tuple(self, spec, expected):
-        assert axis_spec_to_tuple(spec) == expected
+    def test_normalizes_to_tuple(self, func, input_spec, expected):
+        assert func(input_spec) == expected
 
-    def test_generator_consumed_into_tuple(self):
-        # Needs a fresh, stateful generator per call -- not representable
-        # as a static parametrize value alongside the cases above.
+    def test_spec_generator_consumed_into_tuple(self):
         gen = (n for n in ("a", "b"))
         assert axis_spec_to_tuple(gen) == ("a", "b")
 
-
-class TestAxisShapeToTuple:
-    _ax = Axis(4, "x")
-
-    @pytest.mark.parametrize(
-        "shape,expected",
-        [
-            (_ax, (_ax,)),
-            ((_ax, Axis(8)), (_ax, Axis(8))),
-            ({"x": 4, "y": 8}, (Axis(4, "x"), Axis(8, "y"))),
-        ],
-        ids=["single_axis", "iterable_of_axes", "mapping_converted_size_to_name"],
-    )
-    def test_normalizes_to_tuple(self, shape, expected):
-        assert axis_shape_to_tuple(shape) == expected
-
-    def test_non_axis_member_raises_type_error(self):
+    def test_shape_non_axis_member_raises_type_error(self):
         with pytest.raises(TypeError):
             axis_shape_to_tuple(["not_an_axis"])
 
 
-class TestAxisSelectionToTuple:
-    @pytest.mark.parametrize(
-        "selection,expected",
-        [
-            ("batch", ("batch",)),
-            (0, (0,)),
-            (["batch", 1], ("batch", 1)),
-        ],
-        ids=["single_string", "single_int", "mixed_list"],
-    )
-    def test_normalizes(self, selection, expected):
-        assert axis_selection_to_tuple(selection) == expected
+# ---------------------------------------------------------------------------
+# Axis Properties & Accessors
+# ---------------------------------------------------------------------------
 
 
 class TestAxisProperties:
@@ -346,11 +329,12 @@ class TestAxisProperties:
         assert is_anonymous_axis(axis) is expected_anon
 
 
-class TestAxisIndex:
-    @pytest.fixture
-    def selection(self):
-        return (Axis(4, "batch"), Axis(8, "head"), Axis(16))
+# ---------------------------------------------------------------------------
+# Axis Index & Resolution
+# ---------------------------------------------------------------------------
 
+
+class TestAxisIndex:
     @pytest.mark.parametrize(
         "selector,expected",
         [
@@ -370,14 +354,11 @@ class TestAxisIndex:
             "missing_name",
         ],
     )
-    def test_lookup(self, selection, selector, expected):
-        assert axis_index(selection, selector) == expected
+    def test_lookup(self, standard_selection, selector, expected):
+        assert axis_index(standard_selection, selector) == expected
 
-    def test_find_by_axis_value(self, selection):
-        # Needs the same fixture instance on both sides (the axis object
-        # *is* an element of `selection`), so it can't share the static
-        # parametrize table above.
-        assert axis_index(selection, selection[0]) == 0
+    def test_find_by_axis_value(self, standard_selection):
+        assert axis_index(standard_selection, standard_selection[0]) == 0
 
     def test_ambiguous_name_raises(self):
         selection = (Axis(4, "x"), Axis(8, "x"))
@@ -386,32 +367,25 @@ class TestAxisIndex:
 
 
 class TestAxisIndices:
-    @pytest.fixture
-    def selection(self):
-        return (Axis(4, "batch"), Axis(8, "head"))
+    def test_all_resolved(self, standard_selection):
+        assert axis_indices(standard_selection, ["head", "batch"]) == (1, 0)
 
-    def test_all_resolved(self, selection):
-        assert axis_indices(selection, ["head", "batch"]) == (1, 0)
-
-    def test_strict_raises_on_unresolved(self, selection):
+    def test_strict_raises_on_unresolved(self, standard_selection):
         with pytest.raises(ValueError):
-            axis_indices(selection, ["nope"], strict=True)
+            axis_indices(standard_selection, ["nope"], strict=True)
 
-    def test_non_strict_returns_none_for_unresolved(self, selection):
-        assert axis_indices(selection, ["nope"], strict=False) == (None,)
+    def test_non_strict_returns_none_for_unresolved(self, standard_selection):
+        assert axis_indices(standard_selection, ["nope"], strict=False) == (None,)
 
-    def test_default_is_strict(self, selection):
+    def test_default_is_strict(self, standard_selection):
         with pytest.raises(ValueError):
-            axis_indices(selection, ["nope"])
+            axis_indices(standard_selection, ["nope"])
 
 
 class TestResolveAxes:
     def test_resolves_to_axis_objects(self):
         x, y = Axis(4, "x"), Axis(8, "y")
         assert resolve_axes((x, y), ["y", "x"]) == (y, x)
-
-    # "raises on an unresolved selector" is shared with remove_axes/
-    # replace_axes -- see TestUnresolvedSelectorRaises below.
 
 
 class TestMatchAxes:
@@ -456,8 +430,8 @@ class TestMatchAxes:
         source = (Axis(4, "batch"), Axis(8))
         target = (Axis(8), Axis(4, "batch"))
         result = match_axes(source, target, allow_positional_fallback=True)
-        assert AxisMatch(0, 1) in result.matches  # Axis match by name, not position
-        assert AxisMatch(1, 0) in result.matches  # remaining Axis matched positionally
+        assert AxisMatch(0, 1) in result.matches
+        assert AxisMatch(1, 0) in result.matches
 
     def test_returns_match_axis_result_namedtuple(self):
         result = match_axes((), ())
@@ -465,20 +439,25 @@ class TestMatchAxes:
         assert result == MatchAxisResult((), (), ())
 
 
+# ---------------------------------------------------------------------------
+# Set-Like Axis Operations
+# ---------------------------------------------------------------------------
+
+
 class TestUnionAxes:
-    def test_disjoint_names_appended(self):
-        assert union_axes((X4,), (Y8,)) == (X4, Y8)
+    def test_disjoint_names_appended(self, x4, y8):
+        assert union_axes((x4,), (y8,)) == (x4, y8)
 
-    def test_shared_name_deduplicated(self):
-        assert union_axes((X4,), (X4,)) == (X4,)
+    def test_shared_name_deduplicated(self, x4):
+        assert union_axes((x4,), (x4,)) == (x4,)
 
-    def test_anonymous_axes_from_b_always_appended(self):
-        assert union_axes((X4,), (Axis(8), Axis(8))) == (X4, Axis(8), Axis(8))
+    def test_anonymous_axes_from_b_always_appended(self, x4):
+        assert union_axes((x4,), (Axis(8), Axis(8))) == (x4, Axis(8), Axis(8))
 
-    def test_order_is_a_then_new_from_b(self):
-        a = (X4, Y8)
-        b = (Y8, Z16)
-        assert union_axes(a, b) == (X4, Y8, Z16)
+    def test_order_is_a_then_new_from_b(self, x4, y8, z16):
+        a = (x4, y8)
+        b = (y8, z16)
+        assert union_axes(a, b) == (x4, y8, z16)
 
 
 class TestUnionAxesProperties:
@@ -495,37 +474,32 @@ class TestUnionAxesProperties:
 
 
 class TestIntersectAxes:
-    def test_only_shared_names_kept_in_a_order(self):
-        a = (X4, Y8)
-        b = (Y8, Z16)
-        assert intersect_axes(a, b) == (Y8,)
+    def test_only_shared_names_kept_in_a_order(self, x4, y8, z16):
+        a = (x4, y8)
+        b = (y8, z16)
+        assert intersect_axes(a, b) == (y8,)
 
-    def test_anonymous_axes_never_kept(self):
-        a = (Axis(4), Y8)
-        b = (Axis(4), Y8)
-        assert intersect_axes(a, b) == (Y8,)
+    def test_anonymous_axes_never_kept(self, y8):
+        a = (Axis(4), y8)
+        b = (Axis(4), y8)
+        assert intersect_axes(a, b) == (y8,)
 
-    def test_no_overlap_returns_empty(self):
-        assert intersect_axes((X4,), (Y8,)) == ()
+    def test_no_overlap_returns_empty(self, x4, y8):
+        assert intersect_axes((x4,), (y8,)) == ()
 
 
 class TestSetLikeAxisOpsShared:
-    """`union_axes` and `intersect_axes` share identical conflict
-    detection: a name present in both inputs with different sizes always
-    raises `ValueError`. One parametrized test over both functions instead
-    of two near-identical ones per class."""
-
     @pytest.mark.parametrize("op", [union_axes, intersect_axes], ids=["union", "intersect"])
-    def test_shared_name_conflicting_size_raises(self, op):
+    def test_shared_name_conflicting_size_raises(self, op, x4, x8):
         with pytest.raises(ValueError, match="conflicting sizes"):
-            op((X4,), (X8,))
+            op((x4,), (x8,))
 
 
 class TestConcatenateAxes:
     @pytest.mark.parametrize(
         "a,b,expected",
         [
-            ((X4,), (Y8,), (X4, Y8)),
+            ((Axis(4, "x"),), (Axis(8, "y"),), (Axis(4, "x"), Axis(8, "y"))),
             ((Axis(4),), (Axis(4),), (Axis(4), Axis(4))),
         ],
         ids=["simple_concat", "anonymous_axes_never_clash"],
@@ -533,13 +507,13 @@ class TestConcatenateAxes:
     def test_concat(self, a, b, expected):
         assert concatenate_axes(a, b) == expected
 
-    def test_shared_name_raises(self):
+    def test_shared_name_raises(self, x4):
         with pytest.raises(ValueError, match="sharing names"):
-            concatenate_axes((X4,), (X4,))
+            concatenate_axes((x4,), (x4,))
 
-    def test_accepts_generators(self):
-        result = concatenate_axes(iter([X4]), iter([Y8]))
-        assert result == (X4, Y8)
+    def test_accepts_generators(self, x4, y8):
+        result = concatenate_axes(iter([x4]), iter([y8]))
+        assert result == (x4, y8)
 
 
 class TestConcatenateAxesProperties:
@@ -559,20 +533,23 @@ class TestConcatenateAxesProperties:
             concatenate_axes(a, a)
 
 
+# ---------------------------------------------------------------------------
+# Axis Manipulation Operations
+# ---------------------------------------------------------------------------
+
+
 class TestRemoveAxes:
     @pytest.mark.parametrize(
         "axes,selector,expected",
         [
-            ((X4, Y8), "x", (Y8,)),
-            ((X4, Y8, Z16), ["x", "z"], (Y8,)),
-            ((X4, Y8, Z16), ["z", "x"], (Y8,)),
+            ((Axis(4, "x"), Axis(8, "y")), "x", (Axis(8, "y"),)),
+            ((Axis(4, "x"), Axis(8, "y"), Axis(16, "z")), ["x", "z"], (Axis(8, "y"),)),
+            ((Axis(4, "x"), Axis(8, "y"), Axis(16, "z")), ["z", "x"], (Axis(8, "y"),)),
         ],
         ids=["single_name", "multiple", "order_preserved_regardless_of_selector_order"],
     )
     def test_remove(self, axes, selector, expected):
         assert remove_axes(axes, selector) == expected
-
-    # "raises on an unresolved selector" -- see TestUnresolvedSelectorRaises.
 
 
 class TestReplaceAxes:
@@ -601,8 +578,6 @@ class TestReplaceAxes:
         result = replace_axes(axes, "x", Axis(2, "x"))
         assert result == (Axis(2, "x"), Axis(8, "y"))
 
-    # "raises on an unresolved selector" -- see TestUnresolvedSelectorRaises.
-
     def test_mismatched_arity_raises(self):
         axes = (Axis(4, "x"),)
         with pytest.raises(ValueError):
@@ -610,23 +585,20 @@ class TestReplaceAxes:
 
 
 class TestUnresolvedSelectorRaises:
-    """`remove_axes`, `replace_axes`, and `resolve_axes` all raise
-    `ValueError` when a selector doesn't resolve against the given axes --
-    the same contract, previously verified separately (and identically) in
-    each function's own test class."""
-
     @pytest.mark.parametrize(
-        "op",
+        "func, extra_args",
         [
-            lambda axes: remove_axes(axes, "nope"),
-            lambda axes: replace_axes(axes, "nope", Axis(2, "z")),
-            lambda axes: resolve_axes(axes, ["nope"]),
+            (remove_axes, ()),
+            (replace_axes, (Axis(2, "z"),)),
+            (resolve_axes, ()),
         ],
         ids=["remove_axes", "replace_axes", "resolve_axes"],
     )
-    def test_raises_on_unresolved_selector(self, op):
+    def test_raises_on_unresolved_selector(self, func, extra_args, x4):
+        # Passes trailing positional args cleanly without needing inline lambdas
+        args = ("nope",) + extra_args if func != resolve_axes else (["nope"],)
         with pytest.raises(ValueError):
-            op((X4,))
+            func((x4,), *args)
 
 
 class TestMakeAxes:
