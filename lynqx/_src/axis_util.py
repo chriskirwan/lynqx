@@ -5,7 +5,7 @@ from inspect import signature
 from types import UnionType
 from typing import Literal, NamedTuple, overload, ParamSpec, Sequence, TypeVar
 
-from lynqx._src.axis import Axis, AxisDict, AxisLike, AxisSelection, AxisSelector, AxisShape, AxisSpec
+from lynqx._src.axis import Axis, AxisDict, AxisDim, AxisLike, AxisSelection, AxisSelector, AxisShape, AxisSpec
 
 
 # validation
@@ -136,10 +136,11 @@ def axis_shape_to_tuple(axis: AxisShape) -> tuple[Axis, ...]:
     """
     if isinstance(axis, Mapping):
         return tuple(Axis(size, name) for name, size in axis.items())
-    axes = _as_tuple(axis, Axis)
-    if not all(isinstance(axis, Axis) for axis in axes):
-        raise TypeError("`axis` must only contain `Axis`")
-    return axes
+    axes = _as_tuple(axis, AxisDim)
+    if not all(isinstance(axis, AxisDim) for axis in axes):
+        raise TypeError("`axis` must only contain `Axis` or `int` values")
+
+    return tuple(axis if isinstance(axis, Axis) else Axis(axis) for axis in axes)
 
 
 def axis_selection_to_tuple(axis: AxisSelection) -> tuple[AxisSelector, ...]:
