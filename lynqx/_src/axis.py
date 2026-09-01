@@ -46,10 +46,12 @@ class Axis:
         return self.name if self.name is not None else "?"
 
 
-AxisDict = Mapping[str, int]
 AxisLike = str | Axis
 
-AxisShape = Axis | Sequence[Axis] | AxisDict
+AxisDict = Mapping[str, int]
+AxisDim = int | Axis
+AxisShape = AxisDim | Sequence[AxisDim] | AxisDict
+
 AxisSpec = AxisLike | Iterable[AxisLike]
 
 AxisSelector = int | AxisLike
