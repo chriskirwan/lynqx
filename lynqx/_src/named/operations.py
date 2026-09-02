@@ -60,3 +60,27 @@ def broadcast_to(
     jax_array = jnp.broadcast_to(reshaped_array, target_sizes, out_sharding=jax_sharding)
 
     return constructors.array(jax_array, target)
+
+
+def broadcast_arrays(*arrays: NamedArrayLike, out_sharding: ShardingLike | None = None):
+    """Broadcast multiple NamedArrays to a common shape.
+
+    Args:
+        *arrays: The NamedArrays to broadcast.
+        out_sharding: Optional sharding specification for the output arrays.
+
+    Returns:
+        A tuple of broadcasted NamedArrays.
+    """
+    named_arrays = util.ensure_named_tuple("broadcast_arrays", arrays)
+    if not named_arrays:
+        return ()
+
+    # Determine the common target shape
+    target_shape = named_arrays[0].axes
+    for arr in named_arrays[1:]:
+        _, _, target_shape = util.align_shapes_for_broadcast(target_shape, arr.axes)
+
+    # Broadcast each array to the common shape
+    broadcasted_arrays = tuple(broadcast_to(arr, target_shape, out_sharding=out_sharding) for arr in named_arrays)
+    return broadcasted_arrays
