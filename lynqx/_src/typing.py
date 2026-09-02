@@ -7,5 +7,5 @@ from lynqx._src.axis import (
     AxisShape as AxisShape,
     AxisSpec as AxisSpec,
 )
-from lynqx._src.basearray import NamedArray as NamedArray
+from lynqx._src.basearray import NamedArray as NamedArray, NamedArrayLike as NamedArrayLike
 from lynqx._src.partition import PM as PM, ShardingLike as ShardingLike
