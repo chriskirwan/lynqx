@@ -28,7 +28,7 @@ def disjoint_named_axis_tuples(draw, min_size=0, max_size=4):
 def disjoint_named_axis_tuple_pairs(draw, max_size=3):
     """Two tuples of named axes, disjoint both internally and from each
     other -- for testing operations like `concatenate_axes`/`union_axes`
-    where cross-input disjointness is the interesting precondition.
+    where cross-input disjointedness is the interesting precondition.
 
     """
     names = draw(st.lists(axis_names, min_size=0, max_size=max_size * 2, unique=True))
@@ -47,6 +47,16 @@ def duplicate_named_axis_pair(draw):
     "conflicting sizes" checks elsewhere)."""
     name = draw(axis_names)
     return Axis(draw(axis_sizes), name), Axis(draw(axis_sizes), name)
+
+
+@st.composite
+def mixed_anonymous_and_duplicate_named_tuples(draw):
+    """Generates tuples containing a mix of anonymous axes and colliding named axes."""
+    anon = draw(st.lists(anonymous_axes(), min_size=1, max_size=4))
+    dupes = draw(duplicate_named_axis_pair())
+    combined = list(anon) + list(dupes)
+    draw(st.randoms()).shuffle(combined)
+    return tuple(combined)
 
 
 axes = st.one_of(named_axes(), anonymous_axes())
