@@ -4,8 +4,8 @@
 import numpy as np
 from jax import Array
 from jax.sharding import Sharding
+from jax.typing import ArrayLike
 
-# from jax.typing import DTypeLike
 from lynqx._src.axis import Axis
 
 # from lynqx._src.named.methods import _NamedIndexUpdateHelper
@@ -27,3 +27,5 @@ class NamedArray:
     def sharding(self) -> Sharding: ...
     @property
     def shape(self) -> tuple[int, ...]: ...
+
+NamedArrayLike = NamedArray | ArrayLike
