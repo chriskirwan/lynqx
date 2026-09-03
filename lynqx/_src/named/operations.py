@@ -85,3 +85,22 @@ def broadcast_arrays(*arrays: NamedArrayLike, out_sharding: ShardingLike | None 
     # Broadcast each array to the common shape
     broadcasted_arrays = tuple(broadcast_to(arr, target_shape, out_sharding=out_sharding) for arr in named_arrays)
     return broadcasted_arrays
+
+
+def broadcast_shapes(*shapes: AxisShape) -> AxisShape:
+    """Broadcast multiple shapes to a common shape.
+
+    Args:
+        *shapes: The shapes to broadcast.
+
+    Returns:
+        The common broadcasted shape.
+    """
+    if not shapes:
+        return ()
+
+    target_shape = axis_shape_to_tuple(shapes[0])
+    for shape in shapes[1:]:
+        _, _, target_shape = util.align_shapes_for_broadcast(target_shape, axis_shape_to_tuple(shape))
+
+    return target_shape
