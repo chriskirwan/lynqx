@@ -1,6 +1,6 @@
 import jax.numpy as jnp
 
-from lynqx._src.axis_util import axis_shape_to_tuple, match_axes
+from lynqx._src.axis_util import axis_shape_to_tuple, match_axes, validate_unique_axes
 from lynqx._src.named import constructors, util
 from lynqx._src.sharding import canonicalize_sharding
 from lynqx._src.typing import AxisShape, NamedArrayLike, ShardingLike
@@ -9,6 +9,7 @@ from lynqx._src.typing import AxisShape, NamedArrayLike, ShardingLike
 # Broadcasting support
 
 
+@validate_unique_axes(arg_names=("shape",))
 def broadcast_to(
     a: NamedArrayLike,
     shape: AxisShape,

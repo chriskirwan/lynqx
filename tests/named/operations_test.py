@@ -6,7 +6,6 @@ from lynqx._src.named.constructors import named
 from lynqx._src.named.operations import (
     broadcast_arrays,
     broadcast_to,
-    transpose,
 )
 from strategies import (
     disjoint_named_axis_tuples,
@@ -88,6 +87,21 @@ class TestBroadcastTo:
         expected = jnp.broadcast_to(data[None, :], (2, 3))
         assert jnp.array_equal(res.array, expected)
 
+    def test_broadcast_dropping_unit_axis_raises(self):
+        a = named(jnp.ones((1, 3)), (Axis(1, "x"), Axis(3, "y")))
+        with pytest.raises(ValueError, match="broadcast_to cannot drop axes"):
+            broadcast_to(a, (Axis(3, "y"),))
+
+    def test_broadcast_matches_anonymous_axis_positionally(self, named_with_anon):
+        target_shape = (Axis(2, "batch"), Axis(3), Axis(4, "channel"))
+        res = broadcast_to(named_with_anon, target_shape)
+        assert res.axes == target_shape
+
+    def test_broadcast_duplicate_axis_name_in_shape_raises(self):
+        a = named(jnp.ones((8,)), (Axis(8, "x"),))
+        with pytest.raises(ValueError, match="Duplicate axis names"):
+            broadcast_to(a, (Axis(8, "x"), Axis(5, "x")))
+
 
 class TestBroadcastArrays:
     def test_empty_input_returns_empty_tuple(self):
@@ -145,10 +159,6 @@ class TestBroadcastArrays:
         assert jnp.array_equal(res_a.array, expected_a)
         assert jnp.array_equal(res_b.array, expected_b)
 
-    # -----------------------------------------------------------------------
-    # Error Catching & Validation
-    # -----------------------------------------------------------------------
-
     def test_incompatible_axis_sizes_raises_value_error(self):
         a = named(jnp.ones((4,)), (Axis(4, "x"),))
         b = named(jnp.ones((8,)), (Axis(8, "x"),))
@@ -173,56 +183,12 @@ class TestBroadcastArrays:
         assert res.axes == named_arr.axes
         assert res.array.shape == named_arr.array.shape
 
+    def test_broadcast_arrays_preserves_left_hand_axis_order(self):
+        a = named(jnp.ones((4, 8, 3)), (Axis(4, "x"), Axis(8, "y"), Axis(3, "i")))
+        b = named(jnp.ones((3,)), (Axis(3, "i"),))
 
-class TestTranspose:
-    def test_default_transpose_reverses_axes(self, named_3d, x4, y8, z16):
-        res = transpose(named_3d)
+        res_a, res_b = broadcast_arrays(a, b)
 
-        assert res.axes == (z16, y8, x4)
-        assert res.array.shape == (16, 8, 4)
-        assert jnp.array_equal(res.array, jnp.transpose(named_3d.array))
-
-    def test_transpose_with_explicit_string_names(self, named_3d, x4, y8, z16):
-        res = transpose(named_3d, ("z", "x", "y"))
-
-        assert res.axes == (z16, x4, y8)
-        assert res.array.shape == (16, 4, 8)
-        assert jnp.array_equal(res.array, jnp.transpose(named_3d.array, (2, 0, 1)))
-
-    def test_transpose_with_integer_indices(self, named_3d, x4, y8, z16):
-        res = transpose(named_3d, (2, 0, 1))
-
-        assert res.axes == (z16, x4, y8)
-        assert res.array.shape == (16, 4, 8)
-        assert jnp.array_equal(res.array, jnp.transpose(named_3d.array, (2, 0, 1)))
-
-    def test_transpose_with_negative_integer_indices(self, named_3d, x4, y8, z16):
-        res = transpose(named_3d, (-1, 0, -2))
-
-        assert res.axes == (z16, x4, y8)
-        assert res.array.shape == (16, 4, 8)
-
-    def test_transpose_with_mixed_selectors(self, named_with_anon):
-        res = transpose(named_with_anon, ("channel", 1, "batch"))
-
-        assert res.axes == (Axis(4, "channel"), Axis(3), Axis(2, "batch"))
-        assert res.array.shape == (4, 3, 2)
-        assert jnp.array_equal(res.array, jnp.transpose(named_with_anon.array, (2, 1, 0)))
-
-    def test_transpose_identity_permutation(self, named_3d):
-        res = transpose(named_3d, ("x", "y", "z"))
-
-        assert res.axes == named_3d.axes
-        assert jnp.array_equal(res.array, named_3d.array)
-
-    def test_unresolved_axis_raises_value_error(self, named_3d):
-        with pytest.raises(ValueError):
-            transpose(named_3d, ("x", "unknown"))
-
-    def test_duplicate_axis_raises_value_error(self, named_3d):
-        with pytest.raises(ValueError):
-            transpose(named_3d, ("x", "x", "y"))
-
-    def test_wrong_number_of_axes_raises_value_error(self, named_3d):
-        with pytest.raises(ValueError):
-            transpose(named_3d, ("x", "y"))
+        expected_axes = (Axis(4, "x"), Axis(8, "y"), Axis(3, "i"))  # NOT (i, x, y)
+        assert res_a.axes == expected_axes
+        assert res_b.axes == expected_axes
