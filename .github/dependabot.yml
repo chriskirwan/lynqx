@@ -8,6 +8,9 @@ updates:
       day: "monday"
     cooldown:
       default-days: 7
+    python-deps:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
     commit-message:
       prefix: "build(deps)"
   - package-ecosystem: "pre-commit"
