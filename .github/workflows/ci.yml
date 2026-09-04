@@ -28,7 +28,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: uv sync --group dev --group test --locked
+        run: uv sync --group dev --group test
       - name: Typecheck
         run: uv run pyrefly check
       - name: Test with Python ${{ matrix.python-version }}
