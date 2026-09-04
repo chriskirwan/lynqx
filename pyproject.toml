@@ -3,7 +3,7 @@ name = "lynqx"
 version = "0.0.1"
 description = "Lattice Yang-Mills Gauge Theories in python, powered by JAX"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 authors = [
     {name="Christopher Kirwan", email="christopher.kirwan@ibm.com"},
 ]
