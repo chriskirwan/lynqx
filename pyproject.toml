@@ -14,7 +14,7 @@ classifiers = [
 dependencies = [
     "equinox>=0.13.8",
     "jax>=0.11.1",
-    "pydantic>=2.13.4",
+    "pydantic>=2.13.5",
 ]
 
 [project.optional-dependencies]
