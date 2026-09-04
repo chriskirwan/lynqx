@@ -23,6 +23,7 @@ code:
 """
 
 from typing import Any
+from unittest.mock import MagicMock
 
 import jax
 import jax.numpy as jnp
@@ -48,28 +49,11 @@ def named(a: Any, shape: AxisShape):
 def zeros(shape: AxisShape):
     shape = axis_shape_to_tuple(shape)
     positional = axis_sizes(shape)
-
     return NamedArrayImpl(jnp.zeros(positional), shape)
 
 
 def _dummy_contract(a, b):
-    """Placeholder for a future non-trivial lynqx op.
-
-    Contracts the trailing axis of two equally-shaped arrays down to one
-    value per row. Deliberately not a `NamedArray` op: it's here purely to
-    give `jax.jit` something non-trivial to trace through so we can check
-    that our sharding utilities survive that boundary, not to test any
-    particular lynqx API surface.
-    """
     return jnp.sum(a * b, axis=-1)
-
-
-class _FakeMesh:
-    """Minimal stand-in for `jax.sharding.AbstractMesh` -- only `.empty` is
-    read by `canonicalize_sharding`."""
-
-    def __init__(self, empty: bool):
-        self.empty = empty
 
 
 class TestCanonicalizeSharding:
@@ -93,19 +77,28 @@ class TestCanonicalizeSharding:
             canonicalize_sharding(42, ("batch",), "some_fn")
 
     def test_pm_outside_mesh_context_raises(self, monkeypatch):
-        monkeypatch.setattr(jax.sharding, "get_abstract_mesh", lambda: _FakeMesh(empty=True))
+        mock_mesh = MagicMock()
+        mock_mesh.empty = True
+        monkeypatch.setattr(jax.sharding, "get_abstract_mesh", lambda: mock_mesh)
+
         pm = PM({"batch": "data"})
         with pytest.raises(ValueError, match="mesh"):
             canonicalize_sharding(pm, ("batch",), "some_fn")
 
     def test_pm_with_unresolved_logical_axis_raises(self, monkeypatch):
-        monkeypatch.setattr(jax.sharding, "get_abstract_mesh", lambda: _FakeMesh(empty=False))
+        mock_mesh = MagicMock()
+        mock_mesh.empty = False
+        monkeypatch.setattr(jax.sharding, "get_abstract_mesh", lambda: mock_mesh)
+
         pm = PM({"batch": None})
         with pytest.raises(ValueError, match="batch"):
             canonicalize_sharding(pm, ("batch",), "some_fn")
 
     def test_fully_mapped_pm_resolves_to_partition_spec(self, monkeypatch):
-        monkeypatch.setattr(jax.sharding, "get_abstract_mesh", lambda: _FakeMesh(empty=False))
+        mock_mesh = MagicMock()
+        mock_mesh.empty = False
+        monkeypatch.setattr(jax.sharding, "get_abstract_mesh", lambda: mock_mesh)
+
         pm = PM({"batch": "data"})
         assert canonicalize_sharding(pm, ("batch",), "some_fn") == P("data")
 
@@ -156,7 +149,7 @@ class TestAutoMeshAxes:
 
         assert result == "AUTO_AXES_RESULT"
         assert captured["out_sharding"] == P("data")
-        assert captured["fn"](4) == 20  # scale=5 was already bound via partial
+        assert captured["fn"](4) == 20
 
     def test_canonicalize_sharding_called_with_auto_mesh_fn_name(self, monkeypatch):
         seen = {}
@@ -204,8 +197,6 @@ class TestReshard:
         assert out["b"].axes == tree["b"].axes
 
     def test_single_sharding_broadcasts_prefix_style_over_pytree(self, mesh_1d):
-        # `flatten_axes` (borrowed from vmap's `in_axes` handling) lets a
-        # single spec stand in for "apply this to every leaf".
         tree = {"a": zeros({"batch": 8}), "b": zeros({"batch": 8})}
         pm = PM({"batch": "x"})
         with jax.set_mesh(mesh_1d):
@@ -213,11 +204,6 @@ class TestReshard:
         assert set(out) == {"a", "b"}
 
     def test_none_out_shardings_raises_without_a_concrete_target(self):
-        # `reshard` delegates to `jax.reshard`, which requires a concrete,
-        # non-empty-mesh sharding for every leaf -- there's no "leave it
-        # alone" mode. This is worth a second look upstream: the signature
-        # (`out_shardings: ShardingLike | None = None`) reads as if `None`
-        # is a legal no-op, but it always raises in practice.
         x = zeros({"batch": 8})
         with pytest.raises(ValueError, match="non-empty mesh"):
             reshard(x, None)
@@ -234,8 +220,6 @@ class TestReshard:
         assert out.shape == (8,)
 
     def test_named_array_treated_as_a_single_leaf_not_decomposed(self, mesh_1d):
-        # A NamedArray nested in a list should be matched one-for-one
-        # against a single sharding, not flattened further.
         x = zeros({"batch": 8})
         pm = PM({"batch": "x"})
         with jax.set_mesh(mesh_1d):
@@ -282,23 +266,14 @@ class TestDevicePut:
 
 
 class TestWithShardingConstraint:
-    """Under an all-`Explicit` mesh, `with_sharding_constraint` acts as an
-    *assertion* against an array's actual current sharding, not as an
-    operation that shards it for you -- that's what `reshard` is for (JAX
-    says as much in its own error message). So these tests reshard first,
-    and separately check the assertion actually fires on a mismatch.
-    """
-
     def test_succeeds_when_actual_sharding_already_matches(self, mesh_1d):
         pm = PM({"batch": "x"})
         with jax.set_mesh(mesh_1d):
-            x = reshard(zeros({"batch": 8}), pm)  # actually shard it first
+            x = reshard(zeros({"batch": 8}), pm)
             out = with_sharding_constraint(x, pm)
         assert out.axes == x.axes
 
     def test_raises_when_actual_sharding_does_not_match(self, mesh_1d):
-        # A freshly created array is fully replicated (P(None, ...)); just
-        # asserting a sharded spec at it doesn't make it so.
         pm = PM({"batch": "x"})
         with jax.set_mesh(mesh_1d):
             x = zeros({"batch": 8})
@@ -326,21 +301,11 @@ class TestWithShardingConstraint:
         pm = PM({"batch": "x"})
         with jax.set_mesh(mesh_1d):
             with pytest.raises(ValueError):
-                with_sharding_constraint(tree, {"a": pm})  # missing "b"
+                with_sharding_constraint(tree, {"a": pm})
 
 
 class TestJitComposability:
-    """Do the sharding utilities actually compose with `jax.jit`, or do they
-    only work when called eagerly? This mirrors the patterns in JAX's own
-    sharding docs: explicit `in_shardings`/`out_shardings` at a jit
-    boundary, `with_sharding_constraint` pinning an intermediate, and
-    `auto_axes` (via `auto_mesh_axes`) temporarily relaxing a subroutine to
-    Auto sharding inside an Explicit-sharded jit.
-    """
-
     def test_pm_derived_sharding_used_as_jit_in_and_out_shardings(self, mesh_1d):
-        # https://docs.jax.dev/en/latest/201/sharding.html -- explicit
-        # in_shardings/out_shardings at a jit boundary.
         pm = PM({"batch": "x"})
         with jax.set_mesh(mesh_1d):
             in_sharding = NamedSharding(mesh_1d, canonicalize_sharding(pm, ("batch", "feature"), "test"))
@@ -361,11 +326,6 @@ class TestJitComposability:
 
     def test_with_sharding_constraint_composes_inside_jit(self, mesh_1d):
         pm = PM({"batch": "x"})
-        # `with_sharding_constraint` on plain (non-NamedArray) leaves takes a
-        # bare P/NamedSharding rather than a PM -- see
-        # test_pm_on_non_named_array_leaf_raises above -- so we resolve the
-        # PM to a P up front via canonicalize_sharding, exactly as
-        # `named`-level ops built on top of it would.
         with jax.set_mesh(mesh_1d):
             batch_spec = canonicalize_sharding(pm, ("batch",), "test")
 
@@ -375,9 +335,6 @@ class TestJitComposability:
                 b = with_sharding_constraint(b, batch_spec)
                 return _dummy_contract(a, b)
 
-            # Under Explicit mesh axes, with_sharding_constraint asserts
-            # rather than reshards, so the inputs must already carry the
-            # target sharding *before* they're traced into the jit.
             a = reshard(jnp.arange(32.0).reshape(8, 4), batch_spec)
             b = reshard(jnp.ones((8, 4)), batch_spec)
             out = jitted_contract(a, b)
@@ -385,11 +342,6 @@ class TestJitComposability:
         assert jnp.allclose(out, jnp.sum(a * b, axis=-1))
 
     def test_auto_mesh_axes_composes_with_jit_and_explicit_sharding(self, mesh_1d):
-        # https://docs.jax.dev/en/latest/301/index.html -- mixing Explicit
-        # and Auto sharding: the outer jit runs under Explicit sharding
-        # (via with_sharding_constraint), but `auto_mesh_axes` lets the
-        # dummy "dot" subroutine run with the mesh's `batch` axis
-        # temporarily switched to Auto.
         pm = PM({"batch": "x"})
         with jax.set_mesh(mesh_1d):
             auto_contract = auto_mesh_axes(_dummy_contract, ("batch",), pm)
@@ -401,8 +353,6 @@ class TestJitComposability:
                 b = with_sharding_constraint(b, batch_spec)
                 return auto_contract(a, b)
 
-            # Same reasoning as the previous test: reshard before entering
-            # the jit so the in-trace assertion has something true to check.
             a = reshard(jnp.arange(32.0).reshape(8, 4), batch_spec)
             b = reshard(jnp.ones((8, 4)), batch_spec)
             out = outer(a, b)
@@ -410,9 +360,6 @@ class TestJitComposability:
         assert jnp.allclose(out, jnp.sum(a * b, axis=-1))
 
     def test_resharded_arrays_feed_correctly_into_a_jitted_contract(self, mesh_1d):
-        # reshard()/device_put() as producers, feeding a jitted consumer --
-        # the pattern you'd actually see gluing a data pipeline to a
-        # compiled training/inference step.
         pm = PM({"batch": "x"})
         with jax.set_mesh(mesh_1d):
             batch_spec = canonicalize_sharding(pm, ("batch",), "test")
@@ -426,10 +373,6 @@ class TestJitComposability:
 
 
 class TestNamedArrayShardingRoundTrip:
-    """A couple of end-to-end sanity checks mirroring how JAX's own test
-    suite checks sharding round trips: put data on a mesh, read the
-    resulting `.sharding` back off, and check it matches expectations."""
-
     def test_reshard_then_device_put_is_idempotent_on_axes(self, mesh_1d):
         x = named(jnp.arange(8.0), {"batch": 8})
         pm = PM({"batch": "x"})

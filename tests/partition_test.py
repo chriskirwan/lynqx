@@ -3,7 +3,7 @@ from jax import P
 from lynqx._src.axis import Axis
 from lynqx._src.partition import PM
 from strategies import (
-    axes as axis_strategy,  # see strategies.py
+    axes as axis_strategy,
     axis_names as name_strategy,
 )
 
