@@ -36,10 +36,10 @@ class PM:
             return True
         return isinstance(axis, Axis) and axis.name is not None and axis.name in self._mapping
 
-    def with_mappings(self, **update: PhysicalAxis) -> PM:
+    def with_mappings(self, **update: PhysicalAxis) -> "PM":
         return PM({**self._mapping, **update}, self._partition)
 
-    def with_partitions(self, *partition: PhysicalAxis) -> PM:
+    def with_partitions(self, *partition: PhysicalAxis) -> "PM":
         return PM(self._mapping, partition)
 
     @property
