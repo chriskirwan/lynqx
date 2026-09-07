@@ -78,11 +78,10 @@ def broadcast_to(
         array = jnp.transpose(named.array, source_order)
 
         # After transposing, matches are in target order.
-        broadcast_dimensions = tuple(i for i, m in enumerate(sorted(matched.matches, key=lambda m: m.target)))
+        broadcast_dimensions = tuple(m.target for m in sorted(matched.matches, key=lambda m: m.target))
     else:
         array = named.array
 
-    # Directly express the named broadcasting semantics to JAX.
     jax_array = jax.lax.broadcast_in_dim(
         array,
         target_sizes,
@@ -106,12 +105,10 @@ def broadcast_arrays(*arrays: NamedArrayLike, out_sharding: ShardingLike | None 
     if not named_arrays:
         return ()
 
-    # Determine the common target shape
     target_shape = named_arrays[0].axes
     for arr in named_arrays[1:]:
         _, _, target_shape = util.align_shapes_for_broadcast(target_shape, arr.axes)
 
-    # Broadcast each array to the common shape
     broadcasted_arrays = tuple(broadcast_to(arr, target_shape, out_sharding=out_sharding) for arr in named_arrays)
     return broadcasted_arrays
 
