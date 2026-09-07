@@ -87,6 +87,21 @@ class TestBroadcastTo:
         expected = jnp.broadcast_to(data[None, :], (2, 3))
         assert jnp.array_equal(res.array, expected)
 
+    def test_broadcast_reorders_source_and_inserts_axis_between_matched_axes(self, x4, z16):
+        data = jnp.arange(16 * 4).reshape(16, 4)  # axes (z, x), in that order
+        a = array(data, (z16, x4))
+
+        target_shape = (x4, Axis(1, "w"), z16)
+        res = broadcast_to(a, target_shape)
+
+        assert res.axes == target_shape
+        assert res.array.shape == (4, 1, 16)
+
+        # Not just shape: confirm z's data actually landed on the z axis
+        # (position 2) and not on w (position 1) as the bug would have it.
+        expected = jnp.transpose(data)[:, None, :]  # (x, w, z)
+        assert jnp.array_equal(res.array, expected)
+
     def test_broadcast_dropping_unit_axis_raises(self):
         a = array(jnp.ones((1, 3)), (Axis(1, "x"), Axis(3, "y")))
         with pytest.raises(ValueError, match="broadcast_to cannot drop axes"):
