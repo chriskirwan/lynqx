@@ -37,9 +37,7 @@ def is_named_array(element: Any) -> bool:
 
 def is_inexact_named_array(element: Any) -> bool:
     """Returns `True` if `element` is an inexact `NamedArray`"""
-    if isinstance(element, NamedArray):
-        element = element.array
-    return eqx.is_inexact_array(element)
+    return isinstance(element, NamedArray) and eqx.is_inexact_array(element.array)
 
 
 def is_arrayish(element: Any) -> bool:
