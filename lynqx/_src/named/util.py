@@ -2,15 +2,12 @@ from collections.abc import Collection, Sequence
 from typing import Any, overload, TypeVar
 
 import jax.numpy as jnp
-from jax.typing import ArrayLike
 
 from lynqx._src.array import NamedArrayImpl
 from lynqx._src.axis_util import match_axes
 from lynqx._src.filters import is_named_array
-from lynqx._src.typing import Axis, NamedArray
+from lynqx._src.typing import Axis, NamedArray, NamedArrayLike
 
-
-NamedArrayLike = NamedArray | ArrayLike
 
 T = TypeVar("T")
 
