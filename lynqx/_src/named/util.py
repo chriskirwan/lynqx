@@ -1,9 +1,7 @@
-from collections.abc import Callable, Collection, Sequence
-from functools import wraps
+from collections.abc import Collection, Sequence
 from typing import Any, overload, TypeVar
 
 import jax.numpy as jnp
-from jax import Array
 
 from lynqx._src.array import NamedArrayImpl
 from lynqx._src.axis_util import match_axes
@@ -103,23 +101,3 @@ def _align_source_and_target(source: Sequence[Axis], target: Sequence[Axis]) -> 
         else:
             result.append(Axis(name=tgt_ax.name, size=1))
     return tuple(result)
-
-
-def wrap_elementwise_unary_op(fn: Callable[..., Array]) -> Callable[..., NamedArray]:
-    @wraps(fn)
-    def wrapped(x: NamedArrayLike, *args, **kwargs) -> NamedArray:
-        x = ensure_named("wrap_elementwise_unary", x)
-        return NamedArrayImpl(fn(x.array, *args, **kwargs), x.axes)
-
-    return wrapped
-
-
-def wrap_elementwise_binary_op(fn: Callable[..., Array]) -> Callable[..., NamedArray]:
-    @wraps(fn)
-    def wrapped(x: NamedArrayLike, y: NamedArrayLike, *args, **kwargs):
-        x, y = ensure_named("wrap_elementwise_binary_op", x, y)
-        _, _, axes = align_shapes_for_broadcast(x.axes, y.axes)
-
-        return NamedArrayImpl(fn(x.array, y.array, *args, **kwargs), axes)
-
-    return wrapped

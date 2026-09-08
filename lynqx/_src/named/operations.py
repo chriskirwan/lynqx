@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from lynqx._src.axis_util import axis_shape_to_tuple, axis_sizes, match_axes, validate_unique_axes
 from lynqx._src.named import constructors, util
 from lynqx._src.sharding import canonicalize_sharding
-from lynqx._src.typing import AxisShape, NamedArrayLike, ShardingLike
+from lynqx._src.typing import Axis, AxisShape, NamedArray, NamedArrayLike, ShardingLike
 
 
 # Broadcasting support
@@ -91,6 +91,17 @@ def broadcast_to(
     return constructors.array(jax_array, target, out_sharding=out_sharding)
 
 
+def _broadcast_arrays(
+    *arrays: NamedArray, out_sharding: ShardingLike | None = None
+) -> tuple[tuple[NamedArray, ...], tuple[Axis, ...]]:
+    target_shape = arrays[0].axes
+    for arr in arrays[1:]:
+        _, _, target_shape = util.align_shapes_for_broadcast(target_shape, arr.axes)
+
+    broadcasted_arrays = tuple(broadcast_to(arr, target_shape, out_sharding=out_sharding) for arr in arrays)
+    return broadcasted_arrays, target_shape
+
+
 def broadcast_arrays(*arrays: NamedArrayLike, out_sharding: ShardingLike | None = None):
     """Broadcast multiple NamedArrays to a common shape.
 
@@ -105,12 +116,7 @@ def broadcast_arrays(*arrays: NamedArrayLike, out_sharding: ShardingLike | None 
     if not named_arrays:
         return ()
 
-    target_shape = named_arrays[0].axes
-    for arr in named_arrays[1:]:
-        _, _, target_shape = util.align_shapes_for_broadcast(target_shape, arr.axes)
-
-    broadcasted_arrays = tuple(broadcast_to(arr, target_shape, out_sharding=out_sharding) for arr in named_arrays)
-    return broadcasted_arrays
+    return _broadcast_arrays(*named_arrays, out_sharding=out_sharding)
 
 
 def broadcast_shapes(*shapes: AxisShape) -> AxisShape:
