@@ -116,7 +116,7 @@ def broadcast_arrays(*arrays: NamedArrayLike, out_sharding: ShardingLike | None 
     if not named_arrays:
         return ()
 
-    return _broadcast_arrays(*named_arrays, out_sharding=out_sharding)
+    return _broadcast_arrays(*named_arrays, out_sharding=out_sharding)[0]
 
 
 def broadcast_shapes(*shapes: AxisShape) -> AxisShape:
