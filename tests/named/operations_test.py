@@ -117,6 +117,21 @@ class TestBroadcastTo:
         with pytest.raises(ValueError, match="Duplicate axis names"):
             broadcast_to(a, (Axis(8, "x"), Axis(5, "x")))
 
+    def test_broadcast_anonymous_trailing_alignment(self):
+        a = array(jnp.ones((3,)), (Axis(3),))
+        target_shape = (Axis(2, "batch"), Axis(3))
+        res = broadcast_to(a, target_shape)
+
+        assert res.axes == target_shape
+        assert res.array.shape == (2, 3)
+
+    def test_broadcast_anonymous_cannot_match_named_target(self):
+        a = array(jnp.ones((4, 3)), (Axis(4), Axis(3, "x")))
+        target_shape = (Axis(3, "x"), Axis(4, "y"))
+
+        with pytest.raises(ValueError, match="broadcast_to cannot drop axes"):
+            broadcast_to(a, target_shape)
+
 
 class TestBroadcastArrays:
     def test_empty_input_returns_empty_tuple(self):
