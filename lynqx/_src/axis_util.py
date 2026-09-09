@@ -360,9 +360,11 @@ def match_axes(
                 unmatched_tgt.remove(tgt_idx)
 
     if allow_positional_fallback:
-        for src_i in list(unmatched_src):
-            for tgt_i in list(unmatched_tgt):
-                if is_anonymous_axis(source[src_i]) or is_anonymous_axis(target[tgt_i]):
+        for src_i in reversed(list(unmatched_src)):
+            if not is_anonymous_axis(source[src_i]):
+                continue
+            for tgt_i in reversed(list(unmatched_tgt)):
+                if is_anonymous_axis(source[src_i]) and is_anonymous_axis(target[tgt_i]):
                     matches.append(AxisMatch(source=src_i, target=tgt_i))
                     unmatched_src.remove(src_i)
                     unmatched_tgt.remove(tgt_i)
