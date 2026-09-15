@@ -14,5 +14,5 @@ from lynqx._src.basearray import NamedArray as NamedArray, NamedArrayLike as Nam
 from lynqx._src.partition import PM as PM, ShardingLike as ShardingLike
 
 
-AxisIndex = int | slice
+AxisIndex = int | slice | NamedArray
 NamedIndex = AxisIndex | EllipsisType | tuple[AxisIndex | EllipsisType, ...] | Mapping[AxisSelector, AxisIndex]
