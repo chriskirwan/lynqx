@@ -5,7 +5,7 @@ import jax.numpy as jnp
 
 from lynqx._src.array import NamedArrayImpl
 from lynqx._src.axis_util import match_axes
-from lynqx._src.filters import is_named_array
+from lynqx._src.filters import is_named_array, is_scalar
 from lynqx._src.typing import Axis, NamedArray, NamedArrayLike
 
 
@@ -101,3 +101,12 @@ def _align_source_and_target(source: Sequence[Axis], target: Sequence[Axis]) -> 
         else:
             result.append(Axis(name=tgt_ax.name, size=1))
     return tuple(result)
+
+
+def scalar_namedarray_to_jax_scalar(element: Any):
+    if not is_scalar(element):
+        raise ValueError("`element` must be a scalar NamedArray")
+
+    if isinstance(element, NamedArray):
+        return element.array
+    return element
