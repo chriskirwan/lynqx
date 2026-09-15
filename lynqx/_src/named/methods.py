@@ -1,5 +1,5 @@
-from lynqx._src.named import ufuncs
-from lynqx._src.typing import NamedArray
+from lynqx._src.named import constructors, indexing, ufuncs
+from lynqx._src.typing import NamedArray, NamedIndex
 
 
 def _operator_eq(self, other):
@@ -122,6 +122,11 @@ def _operator_rrshift(self, other):
     return ufuncs.right_shift(self, other)
 
 
+def _getitem(self: NamedArray, index: NamedIndex) -> NamedArray:
+    positional, output_axes = indexing.resolve_index(self.axes, index, fn_name="__getitem__")
+    return constructors.array(self.array[positional], output_axes)
+
+
 def _unimplemented_setitem(self, i, x):
     msg = (
         "JAX arrays are immutable and do not support in-place item assignment."
@@ -141,7 +146,7 @@ def _unimplemented_matmul(self, b):
 
 
 _jaxarray_operators = {
-    # "getitem": _getitem,
+    "getitem": _getitem,
     "setitem": _unimplemented_setitem,
     "matmul": _unimplemented_matmul,
     "rmatmul": _unimplemented_matmul,
@@ -182,7 +187,7 @@ _jaxarray_operators = {
 }
 
 _jaxarray_methods = {}
-_jaxarray_properties = {}
+_jaxarray_properties = {"at": indexing.NamedIndexUpdateHelper}
 _named_methods = {}
 _named_properties = {}
 
