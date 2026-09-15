@@ -12,6 +12,11 @@ from lynqx._src.named.indexing import (
     take,
     take_along_axis,
 )
+from lynqx._src.named.methods import register_namedarray_methods
+
+
+register_namedarray_methods()
+del register_namedarray_methods
 
 
 @pytest.fixture
