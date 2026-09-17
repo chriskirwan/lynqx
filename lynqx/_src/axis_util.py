@@ -72,7 +72,7 @@ def check_unique_axis_names(axes: AxisSpec):
         raise ValueError(f"Duplicate axis names detected: {msg}")
 
 
-def is_axis_compatible(a: Axis, b: Axis):
+def is_axis_compatible(a: Axis, b: Axis, *, allow_broadcast: bool = False) -> bool:
     """Whether two axes represent the same concrete axis.
 
     Named axes require matching names and sizes.
@@ -83,13 +83,17 @@ def is_axis_compatible(a: Axis, b: Axis):
     Args:
         a: First axis to compare.
         b: Second axis to compare.
+        allow_broadcast: optionally allow for a, b to be broadcast compatible, Defaults to `False`
 
     Returns:
         Whether the axes are compatible.
     """
     if a.name is None or b.name is None:
-        return a.name is None and b.name is None and a.size == b.size
-
+        if a.name is not None or b.name is not None:
+            return False
+        if allow_broadcast:
+            return a.size == b.size or a.size == 1 or b.size == 1
+        return a.size == b.size
     return a.name == b.name and a.size == b.size
 
 
@@ -287,7 +291,7 @@ def axis_indices(selection: Sequence[Axis], axis: AxisSelection, *, strict: bool
     return indices
 
 
-def resolve_axes(selection: Sequence[Axis], axis: AxisSelection) -> tuple[AxisLike, ...]:
+def resolve_axes(selection: Sequence[Axis], axis: AxisSelection) -> tuple[Axis, ...]:
     """Resolve axis selectors to the corresponding axes.
 
     Args:
@@ -363,12 +367,17 @@ def match_axes(
         for src_i in reversed(list(unmatched_src)):
             if not is_anonymous_axis(source[src_i]):
                 continue
-            for tgt_i in reversed(list(unmatched_tgt)):
-                if is_anonymous_axis(source[src_i]) and is_anonymous_axis(target[tgt_i]):
-                    matches.append(AxisMatch(source=src_i, target=tgt_i))
-                    unmatched_src.remove(src_i)
-                    unmatched_tgt.remove(tgt_i)
-                    break
+            tgt_i = next((t for t in reversed(unmatched_tgt) if is_anonymous_axis(target[t])), None)
+            if tgt_i is None:
+                continue
+            if not is_axis_compatible(source[src_i], target[tgt_i], allow_broadcast=True):
+                raise ValueError(
+                    f"Cannot align anonymous axes at matching trailing position: size {source[src_i].size} vs "
+                    f"size {target[tgt_i].size}"
+                )
+            matches.append(AxisMatch(source=src_i, target=tgt_i))
+            unmatched_src.remove(src_i)
+            unmatched_tgt.remove(tgt_i)
 
     # Sort matches by target index order to keep layout predictable
     matches.sort(key=lambda m: m.target)

@@ -200,7 +200,7 @@ class TestBroadcastArrays:
         a = array(jnp.ones((4,)), (Axis(4),))
         b = array(jnp.ones((8,)), (Axis(8),))
 
-        with pytest.raises(ValueError, match="Cannot broadcast"):
+        with pytest.raises(ValueError, match="Cannot align anonymous axes"):
             broadcast_arrays(a, b)
 
     @given(disjoint_named_axis_tuples(min_size=1, max_size=3))
