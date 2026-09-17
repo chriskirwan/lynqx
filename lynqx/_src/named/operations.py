@@ -1,10 +1,15 @@
+import operator
+from functools import reduce
+
+import equinox as eqx
 import jax.lax
 import jax.numpy as jnp
+from jax.typing import DTypeLike
 
-from lynqx._src.axis_util import axis_shape_to_tuple, axis_sizes, match_axes, validate_unique_axes
-from lynqx._src.named import constructors, util
+from lynqx._src.axis_util import axis_indices, axis_shape_to_tuple, axis_sizes, match_axes, validate_unique_axes
+from lynqx._src.named import constructors, creation, util
 from lynqx._src.sharding import canonicalize_sharding
-from lynqx._src.typing import Axis, AxisShape, NamedArray, NamedArrayLike, ShardingLike
+from lynqx._src.typing import Axis, AxisSelection, AxisShape, NamedArray, NamedArrayLike, ShardingLike
 
 
 # Broadcasting support
@@ -136,3 +141,53 @@ def broadcast_shapes(*shapes: AxisShape) -> AxisShape:
         _, _, target_shape = util.align_shapes_for_broadcast(target_shape, axis_shape_to_tuple(shape))
 
     return target_shape
+
+
+def delta(
+    shape: AxisShape,
+    axes: AxisSelection = (),
+    dtype: DTypeLike | None = None,
+    *,
+    out_sharding: ShardingLike | None = None,
+):
+    shape = axis_shape_to_tuple(shape)
+    indices = axis_indices(shape, axes)
+
+    if len(indices) < 2:
+        raise ValueError(f"delta requires at least 2 axes to compare, got {len(indices)}")
+    if len(set(indices)) != len(indices):
+        raise ValueError(f"delta requires distinct axes, got {axes!r} resolving to duplicate positions {indices}")
+
+    indices = tuple(sorted(indices))  # normalize to shape order; equality is symmetric, so this is free
+    spec = tuple(shape[i] for i in indices)
+
+    iotas = [creation.iota(spec, i, dtype=jnp.uint32) for i in range(len(spec))]
+    eyes = [i1 == i2 for i1, i2 in zip(iotas[:-1], iotas[1:])]
+    result = reduce(operator.and_, eyes)
+
+    new_dtype = jnp.float32 if dtype is None else dtype
+    casted_result = eqx.tree_at(lambda m: m.array, result, replace_fn=lambda x: jnp.astype(x, new_dtype))
+    return broadcast_to(casted_result, shape, out_sharding=out_sharding)
+
+
+def identity(
+    shape: AxisShape,
+    axes: AxisSelection = (-2, -1),
+    dtype: DTypeLike | None = None,
+    *,
+    out_sharding: ShardingLike | None = None,
+):
+    resolved = axis_shape_to_tuple(shape)
+    indices = axis_indices(resolved, axes)
+
+    if len(indices) != 2:
+        raise ValueError(f"identity requires exactly 2 axes, got {len(indices)} from {axes!r}")
+
+    a, b = resolved[indices[0]], resolved[indices[1]]
+    if a.size != b.size:
+        raise ValueError(
+            f"identity requires square axes, got sizes {a.size} and {b.size}; "
+            "use delta(...) directly for a non-square diagonal tensor"
+        )
+
+    return delta(resolved, axes, dtype=dtype, out_sharding=out_sharding)

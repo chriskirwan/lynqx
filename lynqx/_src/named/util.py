@@ -110,3 +110,33 @@ def scalar_namedarray_to_jax_scalar(element: Any):
     if isinstance(element, NamedArray):
         return element.array
     return element
+
+
+def check_scalarlike(fn_name: str, *args: Any):
+    assert isinstance(fn_name, str), f"fn_name must be a string. Got {type(fn_name)}"
+    if any(not is_scalar(arg) for arg in args):
+        pos, arg = next((i, arg) for i, arg in enumerate(args) if not is_scalar(arg))
+        if isinstance(arg, NamedArray):
+            raise TypeError(f"{fn_name} requires `ScalarLike` arguments, got {arg} at position {pos}")
+        raise TypeError(
+            f"{fn_name} requires scalar (or scalar NamedArray) arguments, got {type(arg)} at position {pos}"
+        )
+
+
+@overload
+def ensure_scalar(fn_name: str, /) -> tuple[()]: ...
+
+
+@overload
+def ensure_scalar(fn_name: str, a1: Any, /) -> NamedArray: ...
+
+
+@overload
+def ensure_scalar(fn_name: str, /, *args: Any) -> tuple[NamedArray, ...]: ...
+
+
+def ensure_scalar(fn_name: str, /, *args: Any) -> NamedArray | tuple[NamedArray, ...]:
+    check_scalarlike(fn_name, *args)
+    if len(args) == 1:
+        return _namedarraylike_to_namedarray(args[0])
+    return tuple(_namedarraylike_to_namedarray(arg) for arg in args)
