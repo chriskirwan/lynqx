@@ -93,7 +93,7 @@ def full(
     target = axis_shape_to_tuple(shape)
     target_sizes = axis_sizes(target)
 
-    jax_sharding = canonicalize_sharding(out_sharding, target, "full")
+    jax_sharding = canonicalize_sharding(target, out_sharding, "full")
 
     if isinstance(fill_value, NamedArray):
         fill_value = fill_value.array
@@ -241,7 +241,7 @@ def iota(
         raise ValueError()
 
     jax_shape = axis_sizes(shape)
-    jax_sharding = canonicalize_sharding(out_sharding, shape, "iota")
+    jax_sharding = canonicalize_sharding(shape, out_sharding, "iota")
     jax_array = jax.lax.broadcasted_iota(dtype, jax_shape, axis_idx, out_sharding=jax_sharding)
 
     return constructors.array(jax_array, shape)

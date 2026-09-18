@@ -60,17 +60,13 @@ def broadcast_to(
 
     target_sizes = axis_sizes(target)
     jax_sharding = canonicalize_sharding(
-        out_sharding,
         target,
+        out_sharding,
         "broadcast_to",
     )
 
     if named.array.ndim == 0:
-        jax_array = jnp.broadcast_to(
-            named.array,
-            target_sizes,
-            out_sharding=jax_sharding,
-        )
+        jax_array = jnp.broadcast_to(named.array, target_sizes, out_sharding=jax_sharding)
         return constructors.array(jax_array, target)
 
     broadcast_dimensions = tuple(m.target for m in matched.matches)
