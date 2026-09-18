@@ -8,13 +8,12 @@ from jax import Device, NamedSharding, P
 from jax.api_util import flatten_axes
 from jaxtyping import PyTree
 
+from lynqx._src.axis_util import axis_spec_to_tuple
 from lynqx._src.filters import assert_single_array_leaf, is_named_array
 from lynqx._src.typing import AxisSpec, NamedArray, PM, ShardingLike
 
 
-def canonicalize_sharding(
-    sharding: ShardingLike | None, axes: AxisSpec | None, fn_name: str
-) -> NamedSharding | P | None:
+def canonicalize_sharding(axes: AxisSpec, sharding: ShardingLike | None, fn_name: str) -> NamedSharding | P | None:
     """Convert a Lynqx sharding specification to a JAX sharding specification.
 
     ``PM`` specifications are resolved against the current JAX mesh and the
@@ -39,12 +38,9 @@ def canonicalize_sharding(
             "`NamedSharding` instance or enter into a mesh context via `jax.set_mesh`"
         )
 
-    for logical_axis, physical_spec in sharding._mapping.items():
-        if physical_spec is None:
-            raise ValueError(
-                f"Physical mapping for logical axis {logical_axis} is None. "
-                "Expected a mesh axis name or a sequence of mesh axis names."
-            )
+    for axis in axis_spec_to_tuple(axes):
+        if sharding.get_physical_axis(axis) is None and not sharding.is_mapped(axis):
+            raise ValueError(f"Physical mapping for logical axis {axis} is None.")
 
     partition_spec = sharding.partition_spec(axes)
     return partition_spec
@@ -64,7 +60,7 @@ def auto_mesh_axes(fn: Callable[..., Any], axes: AxisSpec, out_sharding: Shardin
     if out_sharding is None:
         return f
 
-    jax_sharding = canonicalize_sharding(out_sharding, axes, "auto_mesh")
+    jax_sharding = canonicalize_sharding(axes, out_sharding, "auto_mesh")
     return jax.sharding.auto_axes(f, out_sharding=jax_sharding)
 
 
@@ -73,7 +69,7 @@ def _canonicalize_named_sharding(
 ) -> Device | NamedSharding | P | None:
     """Canonicalize a per-leaf sharding, resolving PM for NamedArray leaves."""
     if isinstance(x, NamedArray):
-        return canonicalize_sharding(sharding, x.axes, fn_name)
+        return canonicalize_sharding(x.axes, sharding, fn_name)
     if isinstance(sharding, PM):
         raise TypeError(
             f"{fn_name}: `PM` PartitionSpec supplied for a non-NamedArray leaf "
