@@ -279,7 +279,7 @@ class NamedIndexUpdateRef:
     output_axes: tuple[Axis, ...]
 
     def get(self, *, out_sharding: ShardingLike | None = None, **kwargs) -> NamedArray:
-        jax_sharding = canonicalize_sharding(out_sharding, self.output_axes, "NamedArray.at.get")
+        jax_sharding = canonicalize_sharding(self.output_axes, out_sharding, "NamedArray.at.get")
         jax_array = self.source.array.at[self.positional].get(out_sharding=jax_sharding, **kwargs)
 
         return constructors.array(jax_array, self.output_axes)

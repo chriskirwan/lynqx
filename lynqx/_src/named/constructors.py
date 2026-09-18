@@ -41,7 +41,7 @@ def array(
     """
 
     axis_shape = axis_shape_to_tuple(shape)
-    jax_sharding = canonicalize_sharding(out_sharding, axis_shape, "array")
+    jax_sharding = canonicalize_sharding(axis_shape, out_sharding, "array")
 
     jax_array = jnp.asarray(a, dtype, copy=copy, device=device, out_sharding=jax_sharding)
     return NamedArrayImpl(jax_array, axis_shape)
