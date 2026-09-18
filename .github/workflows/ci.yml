@@ -5,6 +5,7 @@ on:
     branches: [main]
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -14,20 +15,58 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  quality:
+    name: Quality Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Install uv and set Python version
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install dependencies
+        run: uv sync --group dev --group test --python 3.14
+      - name: Lint
+        run: uv run ruff check .
+      - name: Typecheck
+        run: uv run pyrefly check
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7.0.1
-      - name: Install uv and set python version
+
+      - name: Install uv and set Python version
         uses: astral-sh/setup-uv@v10.1.0
         with:
           python-version: ${{ matrix.python-version }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
       - name: Install dependencies
-        run: uv sync --group dev --group test --python ${{ matrix.python-version }}
-      - name: Typecheck
-        run: uv run pyrefly check
+        run: uv sync --group test --python ${{ matrix.python-version }}
+
+      - name: Restore Testmon data
+        uses: actions/cache/restore@v6.1.0
+        with:
+          path: .testmondata
+          key: testmon-linux-py${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}-${{ github.sha }}
+          restore-keys: testmon-linux-py${{ matrix.python-version }}
+
       - name: Test with Python ${{ matrix.python-version }}
-        run: uv run pytest
+        run: uv run pytest --testmon
+
+      - name: Save Testmon data
+        if: always()
+        uses: actions/cache/save@v6.1.0
+        with:
+          path: .testmondata
+          key: testmon-linux-py${{ matrix.python-version }}-${{ github.sha }}
