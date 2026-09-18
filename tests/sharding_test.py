@@ -58,23 +58,23 @@ def _dummy_contract(a, b):
 
 class TestCanonicalizeSharding:
     def test_none_passes_through(self):
-        assert canonicalize_sharding(None, ("batch",), "some_fn") is None
+        assert canonicalize_sharding(("batch",), None, "some_fn") is None
 
     def test_partition_spec_passes_through_unchanged(self):
         spec = P("data")
-        assert canonicalize_sharding(spec, ("batch",), "some_fn") is spec
+        assert canonicalize_sharding(("batch",), spec, "some_fn") is spec
 
     def test_named_sharding_passes_through_unchanged(self, mesh_1d):
         sharding = NamedSharding(mesh_1d, P("x"))
-        assert canonicalize_sharding(sharding, ("batch",), "some_fn") is sharding
+        assert canonicalize_sharding(("batch",), sharding, "some_fn") is sharding
 
     def test_unsupported_type_raises_type_error_naming_the_caller(self):
         with pytest.raises(TypeError, match="some_fn"):
-            canonicalize_sharding(object(), ("batch",), "some_fn")
+            canonicalize_sharding(("batch",), object(), "some_fn")
 
     def test_unsupported_type_error_names_the_supported_types(self):
         with pytest.raises(TypeError, match="NamedSharding|PartitionSpec|PM"):
-            canonicalize_sharding(42, ("batch",), "some_fn")
+            canonicalize_sharding(("batch",), 42, "some_fn")
 
     def test_pm_outside_mesh_context_raises(self, monkeypatch):
         mock_mesh = MagicMock()
@@ -83,7 +83,7 @@ class TestCanonicalizeSharding:
 
         pm = PM({"batch": "data"})
         with pytest.raises(ValueError, match="mesh"):
-            canonicalize_sharding(pm, ("batch",), "some_fn")
+            canonicalize_sharding(("batch",), pm, "some_fn")
 
     def test_pm_with_unresolved_logical_axis_raises(self, monkeypatch):
         mock_mesh = MagicMock()
@@ -92,7 +92,7 @@ class TestCanonicalizeSharding:
 
         pm = PM({"batch": None})
         with pytest.raises(ValueError, match="batch"):
-            canonicalize_sharding(pm, ("batch",), "some_fn")
+            canonicalize_sharding(("batch",), pm, "some_fn")
 
     def test_fully_mapped_pm_resolves_to_partition_spec(self, monkeypatch):
         mock_mesh = MagicMock()
@@ -100,19 +100,19 @@ class TestCanonicalizeSharding:
         monkeypatch.setattr(jax.sharding, "get_abstract_mesh", lambda: mock_mesh)
 
         pm = PM({"batch": "data"})
-        assert canonicalize_sharding(pm, ("batch",), "some_fn") == P("data")
+        assert canonicalize_sharding(("batch",), pm, "some_fn") == P("data")
 
     def test_pm_resolved_inside_a_real_mesh_context(self, mesh_1d):
         pm = PM({"batch": "x"})
         with jax.set_mesh(mesh_1d):
-            result = canonicalize_sharding(pm, ("batch",), "some_fn")
+            result = canonicalize_sharding(("batch",), pm, "some_fn")
         assert result == P("x")
 
     def test_pm_still_raises_inside_real_mesh_if_axis_unresolved(self, mesh_1d):
         pm = PM({"batch": None})
         with jax.set_mesh(mesh_1d):
             with pytest.raises(ValueError, match="batch"):
-                canonicalize_sharding(pm, ("batch",), "some_fn")
+                canonicalize_sharding(("batch",), pm, "some_fn")
 
 
 class TestAutoMeshAxes:
@@ -154,7 +154,7 @@ class TestAutoMeshAxes:
     def test_canonicalize_sharding_called_with_auto_mesh_fn_name(self, monkeypatch):
         seen = {}
 
-        def fake_canonicalize(sharding, axes, fn_name):
+        def fake_canonicalize(axes, sharding, fn_name):
             seen["fn_name"] = fn_name
             return sharding
 
