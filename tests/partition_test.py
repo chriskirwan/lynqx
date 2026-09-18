@@ -41,6 +41,14 @@ class TestGetPhysicalAxis:
         pm = PM({ax: "data"})
         assert pm.get_physical_axis(ax) == "data"
 
+    def test_axis_key_resolved_by_string_lookup(self):
+        pm = PM({Axis(4, "batch"): "data"})
+        assert pm.get_physical_axis("batch") == "data"
+
+    def test_axis_key_resolved_by_different_axis_instance_with_same_name(self):
+        pm = PM({Axis(4, "batch"): "data"})
+        assert pm.get_physical_axis(Axis(8, "batch")) == "data"
+
     def test_named_axis_falls_back_to_name_lookup(self):
         pm = PM({"batch": "data"})
         assert pm.get_physical_axis(Axis(4, "batch")) == "data"
@@ -63,9 +71,17 @@ class TestIsMapped:
         pm = PM({"batch": "data"})
         assert pm.is_mapped("batch") is True
 
+    def test_true_for_string_lookup_when_keyed_by_axis_object(self):
+        pm = PM({Axis(4, "batch"): "data"})
+        assert pm.is_mapped("batch") is True
+
     def test_true_for_axis_object_resolved_by_name(self):
         pm = PM({"batch": "data"})
         assert pm.is_mapped(Axis(4, "batch")) is True
+
+    def test_true_for_different_axis_instance_when_keyed_by_axis_object(self):
+        pm = PM({Axis(4, "batch"): "data"})
+        assert pm.is_mapped(Axis(8, "batch")) is True
 
     def test_true_even_when_mapped_to_none(self):
         # Being present (even mapped to None, i.e. explicitly replicated) is
@@ -193,6 +209,11 @@ class TestPartitionSpec:
     def test_mapped_named_axis_resolved_from_axis_object(self):
         pm = PM({"batch": "data"})
         assert pm.partition_spec((Axis(4, "batch"),)) == P("data")
+
+    def test_axis_key_resolved_in_partition_spec(self):
+        pm = PM({Axis(4, "batch"): "data"})
+        assert pm.partition_spec(("batch",)) == P("data")
+        assert pm.partition_spec((Axis(8, "batch"),)) == P("data")
 
     def test_unmapped_named_axis_is_replicated(self):
         pm = PM()
