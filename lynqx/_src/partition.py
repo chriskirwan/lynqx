@@ -19,22 +19,29 @@ class PM:
         self._mapping = dict(mapping or {})
         self._partition = tuple(partition)
 
-    def get_physical_axis(self, axis: AxisLike) -> PhysicalAxis:
+    def _resolve_key(self, axis: AxisLike) -> LogicalAxis | None:
         if axis in self._mapping:
-            return self._mapping[axis]
+            return axis
 
-        if isinstance(axis, Axis) and axis.name is not None:
-            return self._mapping.get(axis.name)
+        name = axis.name if isinstance(axis, Axis) else axis
+        if name is not None:
+            if name in self._mapping:
+                return name
+            for key in self._mapping:
+                if isinstance(key, Axis) and key.name == name:
+                    return key
 
         return None
+
+    def get_physical_axis(self, axis: AxisLike) -> PhysicalAxis:
+        key = self._resolve_key(axis)
+        return self._mapping.get(key) if key is not None else None
 
     def get_logical_axes(self) -> tuple[LogicalAxis, ...]:
         return tuple(self._mapping)
 
     def is_mapped(self, axis: AxisLike) -> bool:
-        if axis in self._mapping:
-            return True
-        return isinstance(axis, Axis) and axis.name is not None and axis.name in self._mapping
+        return self._resolve_key(axis) is not None
 
     def with_mappings(self, **update: PhysicalAxis) -> "PM":
         return PM({**self._mapping, **update}, self._partition)
