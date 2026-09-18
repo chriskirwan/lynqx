@@ -8,7 +8,6 @@ from jax import Device, NamedSharding, P
 from jax.api_util import flatten_axes
 from jaxtyping import PyTree
 
-from lynqx._src.axis_util import axis_spec_to_tuple
 from lynqx._src.filters import assert_single_array_leaf, is_named_array
 from lynqx._src.typing import AxisSpec, NamedArray, PM, ShardingLike
 
@@ -37,10 +36,6 @@ def canonicalize_sharding(axes: AxisSpec, sharding: ShardingLike | None, fn_name
             "Using `PartitionSpec` when you are not inside a mesh context is not allowed. Please pass a "
             "`NamedSharding` instance or enter into a mesh context via `jax.set_mesh`"
         )
-
-    for axis in axis_spec_to_tuple(axes):
-        if sharding.get_physical_axis(axis) is None and not sharding.is_mapped(axis):
-            raise ValueError(f"Physical mapping for logical axis {axis} is None.")
 
     partition_spec = sharding.partition_spec(axes)
     return partition_spec

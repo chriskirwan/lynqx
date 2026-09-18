@@ -85,14 +85,13 @@ class TestCanonicalizeSharding:
         with pytest.raises(ValueError, match="mesh"):
             canonicalize_sharding(("batch",), pm, "some_fn")
 
-    def test_pm_with_unresolved_logical_axis_raises(self, monkeypatch):
+    def test_unmapped_logical_axis_resolves_to_none(self, monkeypatch):
         mock_mesh = MagicMock()
         mock_mesh.empty = False
         monkeypatch.setattr(jax.sharding, "get_abstract_mesh", lambda: mock_mesh)
 
-        pm = PM({"batch": None})
-        with pytest.raises(ValueError, match="batch"):
-            canonicalize_sharding(("batch",), pm, "some_fn")
+        pm = PM({"batch": "data"})
+        assert canonicalize_sharding(("unmapped_axis",), pm, "some_fn") == P(None)
 
     def test_fully_mapped_pm_resolves_to_partition_spec(self, monkeypatch):
         mock_mesh = MagicMock()
@@ -107,12 +106,6 @@ class TestCanonicalizeSharding:
         with jax.set_mesh(mesh_1d):
             result = canonicalize_sharding(("batch",), pm, "some_fn")
         assert result == P("x")
-
-    def test_pm_still_raises_inside_real_mesh_if_axis_unresolved(self, mesh_1d):
-        pm = PM({"batch": None})
-        with jax.set_mesh(mesh_1d):
-            with pytest.raises(ValueError, match="batch"):
-                canonicalize_sharding(("batch",), pm, "some_fn")
 
 
 class TestAutoMeshAxes:
@@ -139,7 +132,7 @@ class TestAutoMeshAxes:
         monkeypatch.setattr(jax.sharding, "auto_axes", fake_auto_axes)
         monkeypatch.setattr(
             "lynqx._src.sharding.canonicalize_sharding",
-            lambda sharding, axes, fn_name: sharding,
+            lambda axes, sharding, fn_name: sharding,
         )
 
         def fn(x, *, scale):
@@ -308,8 +301,8 @@ class TestJitComposability:
     def test_pm_derived_sharding_used_as_jit_in_and_out_shardings(self, mesh_1d):
         pm = PM({"batch": "x"})
         with jax.set_mesh(mesh_1d):
-            in_sharding = NamedSharding(mesh_1d, canonicalize_sharding(pm, ("batch", "feature"), "test"))
-            out_sharding = NamedSharding(mesh_1d, canonicalize_sharding(pm, ("batch",), "test"))
+            in_sharding = NamedSharding(mesh_1d, canonicalize_sharding(("batch", "feature"), pm, "test"))
+            out_sharding = NamedSharding(mesh_1d, canonicalize_sharding(("batch",), pm, "test"))
 
             jit_contract = jax.jit(
                 _dummy_contract,
@@ -327,7 +320,7 @@ class TestJitComposability:
     def test_with_sharding_constraint_composes_inside_jit(self, mesh_1d):
         pm = PM({"batch": "x"})
         with jax.set_mesh(mesh_1d):
-            batch_spec = canonicalize_sharding(pm, ("batch",), "test")
+            batch_spec = canonicalize_sharding(("batch",), pm, "test")
 
             @jax.jit
             def jitted_contract(a, b):
@@ -345,7 +338,7 @@ class TestJitComposability:
         pm = PM({"batch": "x"})
         with jax.set_mesh(mesh_1d):
             auto_contract = auto_mesh_axes(_dummy_contract, ("batch",), pm)
-            batch_spec = canonicalize_sharding(pm, ("batch",), "test")
+            batch_spec = canonicalize_sharding(("batch",), pm, "test")
 
             @jax.jit
             def outer(a, b):
@@ -362,7 +355,7 @@ class TestJitComposability:
     def test_resharded_arrays_feed_correctly_into_a_jitted_contract(self, mesh_1d):
         pm = PM({"batch": "x"})
         with jax.set_mesh(mesh_1d):
-            batch_spec = canonicalize_sharding(pm, ("batch",), "test")
+            batch_spec = canonicalize_sharding(("batch",), pm, "test")
             a = reshard(jnp.arange(32.0).reshape(8, 4), batch_spec)
             b = device_put(jnp.ones((8, 4)), batch_spec)
 
