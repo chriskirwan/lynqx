@@ -56,16 +56,16 @@ class NamedAxisSpec:
 
     Grammar
     -------
-        ``""``                  scalar — zero axes
-        ``"..."``               wildcard — any axes, dtype-only check
-        ``"a b:3"`` or ``"(a b:3)"`` ordered, exact: axis-for-axis match in sequence.
-        ``"(... a b)"``         ordered suffix constraint
-        ``"(a b ...)"``         ordered prefix constraint
-        ``"{a b:3}"``           unordered, set-based: named axes ⊇ {a, b:3}.
-                                Anonymous axes on the instance are ignored; `_` is not
-                                valid here (matching an anonymous axis needs a position).
+        ``""``                          scalar — zero axes
+        ``"..."``                       wildcard — any axes, dtype-only check
+        ``"a b:3"``                     ordered, exact: axis-for-axis match in sequence.
+        ``"... a b"``                   ordered suffix constraint
+        ``"a b ..."``                   ordered prefix constraint
+        ``"{a b:3}"``                   unordered, set-based: named axes ⊇ {a, b:3}.
+                                            Anonymous axes on the instance are ignored; `_` is not
+                                            valid here (matching an anonymous axis needs a position).
 
-    Note: a braced spec with no tokens (``"{...}"`` or ``"(...)"``) is treated as a
+    Note: a braced spec with no tokens (``"{...}"``) is treated as a
     dtype-checked wildcard — it matches any axes but still checks dtype.
     """
 
