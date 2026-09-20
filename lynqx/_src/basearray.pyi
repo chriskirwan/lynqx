@@ -3,7 +3,7 @@ from typing import Any
 import numpy as np
 from jax import Array
 from jax.sharding import Sharding
-from jax.typing import ArrayLike
+from jaxtyping import ScalarLike
 
 from lynqx._src.axis import Axis
 from lynqx._src.named import NamedIndexUpdateHelper
@@ -84,4 +84,4 @@ class NamedArray:
     @property
     def at(self) -> NamedIndexUpdateHelper: ...
 
-NamedArrayLike = NamedArray | ArrayLike
+NamedArrayLike = NamedArray | ScalarLike
