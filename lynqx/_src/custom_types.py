@@ -120,35 +120,36 @@ class NamedAxisSpec:
                 self._finalize()
                 return
             self.leading_extra = self.trailing_extra = True
-            raw_tokens = [t for t in inner.split() if t != "..."]
-        elif rest.startswith("(") and rest.endswith(")"):
-            self.ordered = True
-            inner = rest[1:-1].strip()
-            if inner == "...":
-                self.is_wildcard = True
-                self.leading_extra = self.trailing_extra = True
-                self._finalize()
-                return
-
-            self.leading_extra = inner.startswith("...")
-            if self.leading_extra:
-                inner = inner[3:].strip()
-            self.trailing_extra = inner.endswith("...")
-            if self.trailing_extra:
-                inner = inner[:-3].strip()
-
-            if self.leading_extra and self.trailing_extra and inner:
+            raw_tokens = inner.split()
+            if "..." in raw_tokens:
                 raise ValueError(
-                    f"{dim_str!r}: '(... x ...)' "
-                    "(contiguous-subsequence-anywhere) is not supported — use a "
-                    "prefix ('(x ...)') or suffix ('(... x)') constraint."
+                    f"{dim_str!r}: '...' is not meaningful inside a braced "
+                    "(unordered) spec -- unordered specs already allow extra "
+                    "axes implicitly, so just omit it."
                 )
-
-            raw_tokens = [t for t in inner.split() if t != "..."]
         else:
             self.ordered = True
-            self.leading_extra = self.trailing_extra = False
-            raw_tokens = rest.split()
+            unbraced_tokens = rest.split()
+
+            self.leading_extra = bool(unbraced_tokens) and unbraced_tokens[0] == "..."
+            if self.leading_extra:
+                unbraced_tokens = unbraced_tokens[1:]
+
+            self.trailing_extra = bool(unbraced_tokens) and unbraced_tokens[-1] == "..."
+            if self.trailing_extra:
+                unbraced_tokens = unbraced_tokens[:-1]
+
+            if self.leading_extra and self.trailing_extra and unbraced_tokens:
+                raise ValueError(
+                    f"{dim_str!r}: '... x ...' "
+                    "(contiguous-subsequence-anywhere) is not supported — use a "
+                    "prefix ('x ...') or suffix ('... x') constraint."
+                )
+
+            if "..." in unbraced_tokens:
+                raise ValueError(f"{dim_str!r}: '...' may only appear at the very start or end of an ordered spec.")
+
+            raw_tokens = unbraced_tokens
 
         tokens = tuple(_parse_token(t, dim_str) for t in raw_tokens)
 
