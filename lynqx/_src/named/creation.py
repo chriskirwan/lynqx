@@ -5,7 +5,15 @@ from jax.typing import DTypeLike
 from lynqx._src.axis_util import axis_index, axis_shape_to_tuple, axis_sizes, validate_unique_axes
 from lynqx._src.named import constructors, util
 from lynqx._src.sharding import canonicalize_sharding
-from lynqx._src.typing import Axis, AxisSelector, AxisShape, DuckTypedArray, NamedArray, NamedArrayLike, ShardingLike
+from lynqx._src.typing import (
+    Axis,
+    AxisSelector,
+    AxisShape,
+    DuckTypedNamedArray,
+    NamedArray,
+    NamedArrayLike,
+    ShardingLike,
+)
 
 
 def zeros(
@@ -109,7 +117,7 @@ def full(
 
 
 def zeros_like(
-    a: NamedArrayLike | DuckTypedArray,
+    a: NamedArrayLike | DuckTypedNamedArray,
     dtype: DTypeLike | None = None,
     shape: AxisShape | None = None,
     *,
@@ -132,7 +140,7 @@ def zeros_like(
 
 
 def ones_like(
-    a: NamedArrayLike | DuckTypedArray,
+    a: NamedArrayLike | DuckTypedNamedArray,
     dtype: DTypeLike | None = None,
     shape: AxisShape | None = None,
     *,
@@ -154,7 +162,7 @@ def ones_like(
 
 
 def empty_like(
-    a: NamedArrayLike | DuckTypedArray,
+    a: NamedArrayLike | DuckTypedNamedArray,
     dtype: DTypeLike | None = None,
     shape: AxisShape | None = None,
     *,
@@ -177,7 +185,7 @@ def empty_like(
 
 
 def full_like(
-    a: NamedArrayLike | DuckTypedArray,
+    a: NamedArrayLike | DuckTypedNamedArray,
     fill_value: NamedArrayLike,
     dtype: DTypeLike | None = None,
     shape: AxisShape | None = None,
