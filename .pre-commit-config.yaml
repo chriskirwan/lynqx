@@ -22,9 +22,9 @@ repos:
   rev: v0.16.8
   hooks:
     - id: ruff-format
-      types_or: [python, pyi, jupyter, toml]
+      types_or: [python, pyi, jupyter]
     - id: ruff-check
-      types_or: [python, pyi, jupyter, toml]
+      types_or: [python, pyi, jupyter]
       args: [--fix]
 - repo: https://github.com/astral-sh/uv-pre-commit
   rev: 0.12.15
