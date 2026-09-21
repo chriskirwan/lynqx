@@ -90,9 +90,6 @@ class TestNamedAxisSpecGrammar:
             NamedAxisSpec("{a ... b}")
 
     def test_parentheses_are_no_longer_special_syntax(self):
-        # Ordered specs used to require "(... x)"/"(x ...)" wrapping; that
-        # syntax has been dropped in favor of bare "... x"/"x ...". A
-        # literal '(' or ')' is now just an invalid token character.
         with pytest.raises(ValueError, match="Invalid axis token"):
             NamedAxisSpec("(a b)")
 
@@ -117,6 +114,24 @@ class TestNamedAxisSpecGrammar:
             with pytest.raises(ValueError, match="Invalid size"):
                 NamedAxisSpec(bad)
 
+    def test_bare_digit_token_is_shorthand_for_anonymous_axis_with_size(self):
+        spec = NamedAxisSpec("x y 3")
+        assert [t.name for t in spec.tokens] == ["x", "y", None]
+        assert [t.size for t in spec.tokens] == [None, None, 3]
+        assert spec.tokens[2] == NamedAxisSpec("x y _:3").tokens[2]
+
+    def test_bare_digit_token_matches_explicit_underscore_colon_form(self):
+        assert NamedAxisSpec("x 3") == NamedAxisSpec("x _:3")
+
+    def test_bare_digit_token_rejected_in_unordered_spec(self):
+        with pytest.raises(ValueError, match="anonymous axis"):
+            NamedAxisSpec("{a 3}")
+
+    def test_invalid_bare_digit_size_rejected(self):
+        for bad in ["0", "01"]:
+            with pytest.raises(ValueError, match="Invalid size"):
+                NamedAxisSpec(bad)
+
     def test_duplicate_named_axis_rejected(self):
         with pytest.raises(ValueError, match="Duplicate named axis"):
             NamedAxisSpec("a a")
@@ -133,11 +148,6 @@ class TestNamedAxisSpecGrammar:
 
     def test_repr(self):
         assert repr(NamedAxisSpec("a b")) == "NamedAxisSpec('a b')"
-
-
-# ---------------------------------------------------------------------------
-# Axis validation (unordered / ordered), independent of dtype
-# ---------------------------------------------------------------------------
 
 
 class TestAxisValidationUnordered:
@@ -218,6 +228,14 @@ class TestAxisValidationOrdered:
         with pytest.raises(NamedArrayAxisError):
             _validate_ordered(bad_axes, spec)
 
+    def test_bare_digit_token_checks_size_same_as_underscore_colon_form(self):
+        spec = NamedAxisSpec("x y 3")
+        ok_axes = (lqx.Axis(32, "x"), lqx.Axis(32, "y"), lqx.Axis(3, None))
+        bad_axes = (lqx.Axis(32, "x"), lqx.Axis(32, "y"), lqx.Axis(4, None))
+        _validate_ordered(ok_axes, spec)
+        with pytest.raises(NamedArrayAxisError):
+            _validate_ordered(bad_axes, spec)
+
     def test_suffix_allows_leading_extra_axes(self):
         spec = NamedAxisSpec("... a b")
         axes = (lqx.Axis(9, "extra1"), lqx.Axis(9, "extra2"), lqx.Axis(2, "a"), lqx.Axis(3, "b"))
@@ -241,19 +259,9 @@ class TestAxisValidationOrdered:
             _validate_ordered((lqx.Axis(1, "a"),), spec)
 
     def test_wildcard_matches_any_axes_via_validate_ordered(self):
-        # The bare wildcard spec sets leading_extra=trailing_extra=True with
-        # no tokens, same shape `_validate_ordered` needs to accept any
-        # sequence of axes -- `_validate` itself never actually reaches
-        # `_validate_ordered` for a wildcard (it returns early), but the
-        # field combination is still exercised directly here.
         spec = NamedAxisSpec("...")
         _validate_ordered((), spec)
         _validate_ordered((lqx.Axis(1, "a"), lqx.Axis(2, None)), spec)
-
-
-# ---------------------------------------------------------------------------
-# Dtype + full isinstance() validation, via the real public specifiers
-# ---------------------------------------------------------------------------
 
 
 class TestDtypeAndInstanceValidation:
