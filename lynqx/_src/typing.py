@@ -9,7 +9,7 @@ from jaxtyping import ScalarLike
 from lynqx._src.axis import (
     Axis as Axis,
     AxisDict as AxisDict,
-    AxisDim,
+    AxisDim as AxisDim,
     AxisLike as AxisLike,
     AxisSelection as AxisSelection,
     AxisSelector as AxisSelector,
@@ -81,13 +81,16 @@ else:
     UInt32 = _make_dtype_specifier(jt.UInt32)
     UInt64 = _make_dtype_specifier(jt.UInt64)
 
-    BFLoat16 = _make_dtype_specifier(jt.BFloat16)
+    BFloat16 = _make_dtype_specifier(jt.BFloat16)
     Float = _make_dtype_specifier(jt.Float)
     Float8e4m3b11fnuz = _make_dtype_specifier(jt.Float8e4m3b11fnuz)
     Float8e4m3fnuz = _make_dtype_specifier(jt.Float8e4m3fnuz)
     Float8e4m3fn = _make_dtype_specifier(jt.Float8e4m3fn)
     Float8e5m2 = _make_dtype_specifier(jt.Float8e5m2)
     Float8e5m2fnuz = _make_dtype_specifier(jt.Float8e5m2fnuz)
+    Float16 = _make_dtype_specifier(jt.Float16)
+    Float32 = _make_dtype_specifier(jt.Float32)
+    Float64 = _make_dtype_specifier(jt.Float64)
 
     Complex = _make_dtype_specifier(jt.Complex)
     Complex64 = _make_dtype_specifier(jt.Complex64)
