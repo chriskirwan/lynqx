@@ -1,4 +1,4 @@
-from jax.typing import ArrayLike
+from jaxtyping import ScalarLike
 
 
 class NamedArray:
@@ -10,4 +10,4 @@ class NamedArray:
         return super().__new__(cls, *args, **kwargs)
 
 
-NamedArrayLike = NamedArray | ArrayLike
+NamedArrayLike = NamedArray | ScalarLike
