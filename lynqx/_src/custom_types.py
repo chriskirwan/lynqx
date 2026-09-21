@@ -33,6 +33,13 @@ _SIZE_RE = re.compile(r"[1-9][0-9]*")
 def _parse_token(tok: str, dim_str: str) -> _AxisToken:
     name, sep, size_str = tok.partition(":")
 
+    if sep == "" and name.isdigit():
+        if not _SIZE_RE.fullmatch(name):
+            raise ValueError(
+                f"Invalid size {name!r} for axis token {tok!r} in dim_str {dim_str!r} — expected a positive integer."
+            )
+        return _AxisToken(None, int(name))
+
     if name == "_":
         name = None
     elif not name.isidentifier():
@@ -54,16 +61,13 @@ class NamedAxisSpec:
     """
     Parsed, hashable axis specification for NamedArray type annotations.
 
-    Grammar
-    -------
-        ``""``                          scalar — zero axes
-        ``"..."``                       wildcard — any axes, dtype-only check
-        ``"a b:3"``                     ordered, exact: axis-for-axis match in sequence.
-        ``"... a b"``                   ordered suffix constraint
-        ``"a b ..."``                   ordered prefix constraint
-        ``"{a b:3}"``                   unordered, set-based: named axes ⊇ {a, b:3}.
-                                            Anonymous axes on the instance are ignored; `_` is not
-                                            valid here (matching an anonymous axis needs a position).
+    - ``""``                        scalar — zero axes
+    - ``"..."``                     wildcard — any axes, dtype-only check
+    - ``"a b:3"``                   ordered, exact: axis-for-axis match in sequence.
+    - ``"... a b"``                 ordered suffix constraint
+    - ``"a b ..."``                 ordered prefix constraint
+    - ``"{a b:3}"``                 unordered, set-based: named axes ⊇ {a, b:3}. Anonymous axes on the instance are
+                                    ignored; `_` is not valid here (matching an anonymous axis needs a position).
 
     Note: a braced spec with no tokens (``"{...}"``) is treated as a
     dtype-checked wildcard — it matches any axes but still checks dtype.
