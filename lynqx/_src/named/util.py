@@ -64,7 +64,7 @@ def align_shapes_for_broadcast(
     Returns:
         (aligned_lhs_axes, aligned_rhs_axes, broadcast_out_axes)
     """
-    matched = match_axes(lhs, rhs)
+    matched = match_axes(lhs, rhs, allow_positional_fallback=True)
 
     # Validate named axis sizes match
     for m in matched.matches:
@@ -91,7 +91,7 @@ def align_shapes_for_broadcast(
 
 def _align_source_and_target(source: Sequence[Axis], target: Sequence[Axis]) -> tuple[Axis, ...]:
     """Expands `source` with unit dummy axes (size 1) to match `target` shape."""
-    res = match_axes(source, target)
+    res = match_axes(source, target, allow_positional_fallback=True)
     tgt_to_src = {m.target: m.source for m in res.matches}
 
     result: list[Axis] = []
