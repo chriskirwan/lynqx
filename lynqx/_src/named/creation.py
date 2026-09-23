@@ -207,7 +207,7 @@ def full_like(
     """
 
     named, fill_named = util.ensure_named("full_like", a, fill_value)
-
+    dtype = named.dtype if dtype is None else dtype
     fill_shape = named.axes if shape is None else shape
 
     return full(fill_shape, fill_value, dtype, out_sharding=out_sharding)
