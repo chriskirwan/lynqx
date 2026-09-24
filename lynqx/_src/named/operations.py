@@ -92,11 +92,15 @@ def broadcast_to(
     return constructors.array(jax_array, target, out_sharding=out_sharding)
 
 
-def _broadcast_arrays(
-    *arrays: NamedArray, out_sharding: ShardingLike | None = None
+def broadcast_arrays_and_shape(
+    *arrays: NamedArrayLike, out_sharding: ShardingLike | None = None
 ) -> tuple[tuple[NamedArray, ...], tuple[Axis, ...]]:
-    target_shape = arrays[0].axes
-    for arr in arrays[1:]:
+    named_arrays = util.ensure_named_tuple("broadcast_arrays", arrays)
+    if not named_arrays:
+        return (), ()
+
+    target_shape = named_arrays[0].axes
+    for arr in named_arrays[1:]:
         _, _, target_shape = util.align_shapes_for_broadcast(target_shape, arr.axes)
 
     broadcasted_arrays = tuple(broadcast_to(arr, target_shape, out_sharding=out_sharding) for arr in arrays)
@@ -113,14 +117,10 @@ def broadcast_arrays(*arrays: NamedArrayLike, out_sharding: ShardingLike | None 
     Returns:
         A tuple of broadcasted NamedArrays.
     """
-    named_arrays = util.ensure_named_tuple("broadcast_arrays", arrays)
-    if not named_arrays:
-        return ()
-
-    return _broadcast_arrays(*named_arrays, out_sharding=out_sharding)[0]
+    return broadcast_arrays_and_shape(*arrays, out_sharding=out_sharding)[0]
 
 
-def broadcast_shapes(*shapes: AxisShape) -> AxisShape:
+def broadcast_shapes(*shapes: AxisShape) -> tuple[Axis, ...]:
     """Broadcast multiple shapes to a common shape.
 
     Args:
@@ -141,11 +141,11 @@ def broadcast_shapes(*shapes: AxisShape) -> AxisShape:
 
 def delta(
     shape: AxisShape,
-    axes: AxisSelection = (),
+    axes: AxisSelection | None = None,
     dtype: DTypeLike | None = None,
     *,
     out_sharding: ShardingLike | None = None,
-):
+) -> NamedArray:
     shape = axis_shape_to_tuple(shape)
     indices = axis_indices(shape, axes)
 
@@ -168,11 +168,11 @@ def delta(
 
 def identity(
     shape: AxisShape,
-    axes: AxisSelection = (-2, -1),
+    axes: AxisSelection = (-1, -2),
     dtype: DTypeLike | None = None,
     *,
     out_sharding: ShardingLike | None = None,
-):
+) -> NamedArray:
     resolved = axis_shape_to_tuple(shape)
     indices = axis_indices(resolved, axes)
 
