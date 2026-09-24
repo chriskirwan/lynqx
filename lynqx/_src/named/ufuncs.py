@@ -22,7 +22,7 @@ def wrap_elementwise_binary_op(fn: Callable[..., Array]) -> Callable[..., NamedA
     @wraps(fn)
     def wrapped(x: NamedArrayLike, y: NamedArrayLike, *args, **kwargs):
         x, y = util.ensure_named("wrap_elementwise_binary_op", x, y)
-        (a, b), axes = operations._broadcast_arrays(x, y)
+        (a, b), axes = operations.broadcast_arrays_and_shape(x, y)
         return constructors.array(fn(a.array, b.array, *args, **kwargs), axes)
 
     return wrapped
