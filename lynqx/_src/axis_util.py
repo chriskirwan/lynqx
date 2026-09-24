@@ -147,8 +147,10 @@ def axis_shape_to_tuple(axis: AxisShape) -> tuple[Axis, ...]:
     return tuple(axis if isinstance(axis, Axis) else Axis(axis) for axis in axes)
 
 
-def axis_selection_to_tuple(axis: AxisSelection) -> tuple[AxisSelector, ...]:
+def axis_selection_to_tuple(axis: AxisSelection | None) -> tuple[AxisSelector, ...]:
     """Normalize an axis selection to a tuple of selectors.
+
+    ``None`` is treated as an empty selection
 
     Args:
         axis: Axis selector or iterable of selectors.
@@ -156,6 +158,8 @@ def axis_selection_to_tuple(axis: AxisSelection) -> tuple[AxisSelector, ...]:
     Returns:
         A tuple of axis selectors.
     """
+    if axis is None:
+        return ()
     return _as_tuple(axis, AxisSelector)
 
 
@@ -175,7 +179,7 @@ def axis_names(axis: Sequence[AxisLike]) -> tuple[str | None, ...]:
         axis: Axis-like values to inspect.
 
     Returns:
-        A tuple containing each axis name, or ``None`` for anonymous axes.
+        A tuple containing each axis name, or `None` for anonymous axes.
     """
     return tuple(_axis_name(ax) for ax in axis)
 
@@ -207,7 +211,7 @@ def is_anonymous_axis(axis: AxisLike):
 # indexing
 
 
-def axis_index(selection: Sequence[Axis], axis: AxisSelector) -> int | None:
+def axis_index(selection: Sequence[Axis], axis: AxisSelector | None) -> int | None:
     """Find the position of an axis selected by name, position, or value.
 
     Integer selectors support negative indexing. A missing selector returns
@@ -215,7 +219,7 @@ def axis_index(selection: Sequence[Axis], axis: AxisSelector) -> int | None:
 
     Args:
         selection: Axes in which to search.
-        axis: Name, integer position, or axis value to find.
+        axis: Name, integer position, axis value or `None`.
 
     Returns:
         The matching zero-based position, or ``None`` if no axis matches.
@@ -223,6 +227,9 @@ def axis_index(selection: Sequence[Axis], axis: AxisSelector) -> int | None:
     Raises:
         ValueError: If the selector matches multiple axes.
     """
+    if axis is None:
+        return None
+
     if isinstance(axis, int):
         if axis < 0:
             axis += len(selection)
@@ -248,21 +255,23 @@ def axis_index(selection: Sequence[Axis], axis: AxisSelector) -> int | None:
 
 @overload
 def axis_indices(
-    selection: Sequence[Axis], axis: AxisSelection, *, strict: Literal[False]
+    selection: Sequence[Axis], axis: AxisSelection | None, *, strict: Literal[False]
 ) -> tuple[int | None, ...]: ...
 
 
 @overload
 def axis_indices(
-    selection: Sequence[Axis], axis: AxisSelection, *, strict: Literal[True] = True
+    selection: Sequence[Axis], axis: AxisSelection | None, *, strict: Literal[True] = True
 ) -> tuple[int, ...]: ...
 
 
 @overload
-def axis_indices(selection: Sequence[Axis], axis: AxisSelection, *, strict: bool) -> tuple[int | None, ...]: ...
+def axis_indices(selection: Sequence[Axis], axis: AxisSelection | None, *, strict: bool) -> tuple[int | None, ...]: ...
 
 
-def axis_indices(selection: Sequence[Axis], axis: AxisSelection, *, strict: bool = True) -> tuple[int | None, ...]:
+def axis_indices(
+    selection: Sequence[Axis], axis: AxisSelection | None, *, strict: bool = True
+) -> tuple[int | None, ...]:
     """Resolve one or more axis selectors to positions.
 
     Args:
@@ -291,7 +300,7 @@ def axis_indices(selection: Sequence[Axis], axis: AxisSelection, *, strict: bool
     return indices
 
 
-def resolve_axes(selection: Sequence[Axis], axis: AxisSelection) -> tuple[Axis, ...]:
+def resolve_axes(selection: Sequence[Axis], axis: AxisSelection | None) -> tuple[Axis, ...]:
     """Resolve axis selectors to the corresponding axes.
 
     Args:
@@ -461,6 +470,7 @@ def intersect_axes(a: Sequence[Axis], b: Sequence[Axis]) -> tuple[Axis, ...]:
     return tuple(result)
 
 
+@validate_unique_axes(arg_names=("a", "b"))
 def concatenate_axes(a: Sequence[Axis], b: Sequence[Axis]):
     """Concatenate two axis sequences while rejecting named collisions.
 
@@ -490,7 +500,7 @@ def concatenate_axes(a: Sequence[Axis], b: Sequence[Axis]):
     return a_tuple + b_tuple
 
 
-def remove_axes(axes: Sequence[Axis], to_remove: AxisSelection):
+def remove_axes(axes: Sequence[Axis], to_remove: AxisSelection | None) -> tuple[Axis, ...]:
     """Remove selected axes from a sequence.
 
     Args:
@@ -508,7 +518,7 @@ def remove_axes(axes: Sequence[Axis], to_remove: AxisSelection):
     return tuple(axis for i, axis in enumerate(axes) if i not in positions)
 
 
-def replace_axes(axes: Sequence[Axis], old: AxisSelection, new: AxisShape):
+def replace_axes(axes: Sequence[Axis], old: AxisSelection | None, new: AxisShape):
     """Replace selected axes with a new axis shape.
 
     Args:
@@ -523,6 +533,9 @@ def replace_axes(axes: Sequence[Axis], old: AxisSelection, new: AxisShape):
         ValueError: If selectors cannot be resolved, replacement names are
             duplicated, or replacement names collide with retained axes.
     """
+    if old is None:
+        return tuple(axes)
+
     axes_list = list(axes)
     positions = axis_indices(axes, old)
     new_axes = axis_shape_to_tuple(new)

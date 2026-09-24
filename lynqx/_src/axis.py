@@ -2,7 +2,6 @@ import keyword
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Iterable
 
 
 _AXIS_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -52,7 +51,7 @@ AxisDict = Mapping[str, int]
 AxisDim = int | Axis
 AxisShape = AxisDim | Sequence[AxisDim] | AxisDict
 
-AxisSpec = AxisLike | Iterable[AxisLike]
+AxisSpec = AxisLike | Sequence[AxisLike]
 
 AxisSelector = int | AxisLike
 AxisSelection = AxisSelector | Sequence[int | AxisLike]
