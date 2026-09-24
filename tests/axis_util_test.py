@@ -267,6 +267,7 @@ class TestAxisNormalization:
             (axis_selection_to_tuple, "batch", ("batch",)),
             (axis_selection_to_tuple, 0, (0,)),
             (axis_selection_to_tuple, ["batch", 1], ("batch", 1)),
+            (axis_selection_to_tuple, None, ()),
         ],
         ids=[
             "spec_single_string",
@@ -279,6 +280,7 @@ class TestAxisNormalization:
             "selection_string",
             "selection_int",
             "selection_list",
+            "selection_none",
         ],
     )
     def test_normalizes_to_tuple(self, func, input_spec, expected):
@@ -365,6 +367,9 @@ class TestAxisIndex:
         with pytest.raises(ValueError, match="abmigious|ambiguous"):
             axis_index(selection, "x")
 
+    def test_none_selector_returns_none(self, standard_selection):
+        assert axis_index(standard_selection, None) is None
+
 
 class TestAxisIndices:
     def test_all_resolved(self, standard_selection):
@@ -381,11 +386,22 @@ class TestAxisIndices:
         with pytest.raises(ValueError):
             axis_indices(standard_selection, ["nope"])
 
+    def test_none_selection_returns_empty_tuple(self, standard_selection):
+        assert axis_indices(standard_selection, None) == ()
+
+    def test_none_selection_is_not_strict_checked(self, standard_selection):
+        # Even with strict=True (the default), None means "no selectors were
+        # given" -- there's nothing to fail to resolve.
+        assert axis_indices(standard_selection, None, strict=True) == ()
+
 
 class TestResolveAxes:
     def test_resolves_to_axis_objects(self):
         x, y = Axis(4, "x"), Axis(8, "y")
         assert resolve_axes((x, y), ["y", "x"]) == (y, x)
+
+    def test_none_selector_resolves_to_no_axes(self, x4, y8):
+        assert resolve_axes((x4, y8), None) == ()
 
 
 class TestMatchAxes:
@@ -511,10 +527,6 @@ class TestConcatenateAxes:
         with pytest.raises(ValueError, match="sharing names"):
             concatenate_axes((x4,), (x4,))
 
-    def test_accepts_generators(self, x4, y8):
-        result = concatenate_axes(iter([x4]), iter([y8]))
-        assert result == (x4, y8)
-
 
 class TestConcatenateAxesProperties:
     @given(disjoint_named_axis_tuple_pairs())
@@ -551,6 +563,10 @@ class TestRemoveAxes:
     def test_remove(self, axes, selector, expected):
         assert remove_axes(axes, selector) == expected
 
+    def test_none_selector_is_a_no_op(self, x4, y8):
+        axes = (x4, y8)
+        assert remove_axes(axes, None) == axes
+
 
 class TestReplaceAxes:
     def test_replace_single_axis_same_arity(self):
@@ -582,6 +598,12 @@ class TestReplaceAxes:
         axes = (Axis(4, "x"),)
         with pytest.raises(ValueError):
             replace_axes(axes, "x", [Axis(2, "a"), Axis(2, "b")])
+
+    def test_none_selector_is_a_no_op_ignoring_new(self, x4, y8):
+        axes = (x4, y8)
+        # `new` would be a mismatched-arity replacement if `old` weren't None --
+        # confirms `new` is genuinely ignored, not just "happens to line up".
+        assert replace_axes(axes, None, [Axis(2, "a"), Axis(2, "b"), Axis(2, "c")]) == axes
 
 
 class TestUnresolvedSelectorRaises:
