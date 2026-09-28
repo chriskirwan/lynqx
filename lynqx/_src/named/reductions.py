@@ -760,7 +760,7 @@ def argsort(
 def partition(
     a: NamedArrayLike,
     kth: int,
-    axis: AxisLike,
+    axis: AxisSelection,
 ) -> NamedArray:
     """Partition an array around ``kth`` along an axis.
 
@@ -778,7 +778,7 @@ def partition(
 def argpartition(
     a: NamedArrayLike,
     kth: int,
-    axis: AxisLike,
+    axis: AxisSelection,
 ) -> NamedArray:
     """Return indices that partition an array around ``kth`` along an axis.
 
