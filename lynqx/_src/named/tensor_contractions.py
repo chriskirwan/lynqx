@@ -1,8 +1,8 @@
 from collections.abc import Sequence
 from typing import NamedTuple
 
+import equinox as eqx
 import jax.numpy as jnp
-from jax import jit
 from jax.lax import dot as lax_dot, PrecisionLike
 from jax.typing import DTypeLike
 
@@ -130,7 +130,7 @@ def _parse_dot_axes(
     return dimension_numbers, output_axes
 
 
-@jit(static_argnums=(2, 3, 4))
+@eqx.filter_jit
 def _dot(
     lhs: NamedArray,
     rhs: NamedArray,
@@ -228,7 +228,12 @@ def _infer_batch_axes(
             lhs_batch_list.append(lhs_anon_by_dist[dist])
             rhs_batch_list.append(rhs_anon_by_dist[dist])
 
-    return tuple(lhs_batch_list), tuple(rhs_batch_list)
+    batch_pairs = sorted(zip(lhs_batch_list, rhs_batch_list))
+
+    return (
+        tuple(lhs_idx for lhs_idx, _ in batch_pairs),
+        tuple(rhs_idx for _, rhs_idx in batch_pairs),
+    )
 
 
 def vecdot(
