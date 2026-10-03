@@ -1,15 +1,34 @@
 import operator
+from collections.abc import Callable, Mapping
 from functools import reduce
+from typing import Any
 
 import equinox as eqx
 import jax.lax
 import jax.numpy as jnp
 from jax.typing import DTypeLike
 
-from lynqx._src.axis_util import axis_indices, axis_shape_to_tuple, axis_sizes, match_axes, validate_unique_axes
-from lynqx._src.named import constructors, creation, util
+from lynqx._src.axis import AxisLike
+from lynqx._src.axis_util import (
+    axis_index,
+    axis_indices,
+    axis_shape_to_tuple,
+    axis_sizes,
+    match_axes,
+    remove_axes,
+    resolve_axes,
+    validate_unique_axes,
+)
+from lynqx._src.named import constructors, creation, ufuncs, util
 from lynqx._src.sharding import canonicalize_sharding
-from lynqx._src.typing import Axis, AxisSelection, AxisShape, NamedArray, NamedArrayLike, ShardingLike
+from lynqx._src.typing import Axis, AxisSelection, AxisSelector, AxisShape, NamedArray, NamedArrayLike, ShardingLike
+
+
+# utility functions
+
+
+def iscomplexobj(x: Any) -> bool:
+    return jnp.iscomplexobj(x)
 
 
 # Broadcasting support
@@ -139,6 +158,9 @@ def broadcast_shapes(*shapes: AxisShape) -> tuple[Axis, ...]:
     return target_shape
 
 
+# Additional creation operations
+
+
 def delta(
     shape: AxisShape,
     axes: AxisSelection | None = None,
@@ -187,3 +209,237 @@ def identity(
         )
 
     return delta(resolved, axes, dtype=dtype, out_sharding=out_sharding)
+
+
+# shape/axis-wise operations
+
+
+def diagonal(
+    a: NamedArrayLike, axis1: AxisSelector, axis2: AxisSelector, diagonal: AxisLike | None = None, offset: int = 0
+) -> NamedArray:
+    a = util.ensure_named("diagonal", a)
+
+    batch_axes = remove_axes(a.axes, (axis1, axis2))
+    idx0, idx1 = axis_indices(a.axes, (axis1, axis2))
+
+    diag_axis_size = min(a.axes[idx0].size, a.axes[idx1].size) - abs(offset)
+    diag_axis = util.resolve_new_axis(diagonal, diag_axis_size, "diagonal", "diagonal")
+
+    out_shape = batch_axes + (diag_axis,)
+    jax_array = jnp.diagonal(a.array, offset, idx0, idx1)
+
+    return constructors.array(jax_array, out_shape)
+
+
+# def diagflat(a: NamedArrayLike, k: int = 0) -> NamedArray:
+#     a = util.ensure_named("diagflat", a)
+#     ...
+
+
+def _tri_mask(array: NamedArray, axis1: AxisSelector, axis2: AxisSelector, k: int, *, upper: bool) -> NamedArray:
+    idx0, idx1 = axis_indices(array.axes, (axis1, axis2))
+    if idx0 == idx1:
+        raise ValueError(f"axis1 and axis2 must be distinct, both resolved to position {idx0}")
+
+    # Keep the two axes in *array* order so broadcast_to needs no transpose.
+    spec = resolve_axes(array.axes, (idx0, idx1))
+
+    # axis1 plays "row", axis2 plays "column", wherever they sit in spec.
+    row_pos, col_pos = (0, 1) if idx0 < idx1 else (1, 0)
+    row = creation.iota(spec, row_pos, dtype=jnp.int32)
+    col = creation.iota(spec, col_pos, dtype=jnp.int32)
+
+    diff = row - col
+    mask = (diff >= k) if upper else (diff <= k)
+    return broadcast_to(mask, array.axes)
+
+
+def triu(a: NamedArrayLike, axis1: AxisSelector, axis2: AxisSelector, k: int = 0) -> NamedArray:
+    named = util.ensure_named("triu", a)
+    mask = _tri_mask(named, axis1, axis2, k, upper=True)
+    return constructors.array(jnp.where(mask.array, named.array, 0), named.axes)
+
+
+def tril(a: NamedArrayLike, axis1: AxisSelector, axis2: AxisSelector, k: int = 0) -> NamedArray:
+    named = util.ensure_named("tril", a)
+    mask = _tri_mask(named, axis1, axis2, k, upper=False)
+    return constructors.array(jnp.where(mask.array, named.array, 0), named.axes)
+
+
+def tri(shape: AxisShape, axes: AxisSelection = (-1, -2), k: int = 0, dtype: DTypeLike | None = None) -> NamedArray:
+    resolved = axis_shape_to_tuple(shape)
+    indices = axis_indices(resolved, axes)
+
+    a, b = indices
+
+    diag = creation.ones(shape, dtype=dtype)
+    mask = _tri_mask(diag, a, b, k, upper=False)
+    return mask * diag
+
+
+def transpose(a: NamedArrayLike, permutation: AxisSelection | None = None):
+    """Transpose a NamedArray according to the given axis permutation.
+
+    Args:
+        a: The NamedArray to transpose.
+        permutation: A sequence of axis names or indices specifying the new order of axes.
+                     If None, reverses the order of axes.
+
+    Returns:
+        A new NamedArray with axes transposed according to the specified permutation.
+    """
+    named = util.ensure_named("transpose", a)
+
+    if permutation is None:
+        permutes_axes = tuple(reversed(named.axes))
+    else:
+        permutes_axes = resolve_axes(named.axes, permutation)
+
+    matched = match_axes(named.axes, permutes_axes, allow_positional_fallback=True)
+    if matched.unmatched_source or matched.unmatched_target:
+        raise ValueError("Invalid permutation: all axes must be accounted for in the permutation.")
+
+    tgt_to_src = {m.target: m.source for m in matched.matches}
+    axis_permutation = tuple(tgt_to_src[i] for i in range(len(permutes_axes)))
+
+    jax_array = jnp.transpose(named.array, axes=axis_permutation)
+    return constructors.array(jax_array, permutes_axes)
+
+
+PadValue = int | tuple[int, int]
+PadMapping = Mapping[AxisSelector, PadValue]
+PadSpec = PadValue | PadMapping
+
+
+def _resolve_pad_width(val: PadValue) -> tuple[int, int]:
+    if isinstance(val, int):
+        if val < 0:
+            raise ValueError(f"Pad width must be non-negative, got {val}")
+        return (val, val)
+    else:
+        lo, hi = val
+        if lo < 0 or hi < 0:
+            raise ValueError(f"Pad width must be non-negative, got ({lo}, {hi})")
+        return val
+
+
+def _normalize_pad_width(axes: tuple[Axis, ...], pad_width: PadSpec) -> tuple[tuple[int, int], ...]:
+    if not isinstance(pad_width, Mapping):
+        if isinstance(pad_width, tuple) and len(pad_width) != 2:
+            raise ValueError(
+                f"pad_width tuple must be (before, after), got {pad_width!r}; use a mapping for per-axis widths"
+            )
+        return (_resolve_pad_width(pad_width),) * len(axes)
+
+    widths: list[tuple[int, int] | None] = [None] * len(axes)
+    for key, val in pad_width.items():
+        idx = axis_index(axes, key)
+        if idx is None:  # drop this check if axis_index raises on failure
+            raise ValueError(f"pad_width key {key!r} does not match any axis in {tuple(a.name for a in axes)}")
+        if widths[idx] is not None:
+            raise ValueError(f"axis {axes[idx].name!r} appears more than once in pad_width")
+        widths[idx] = _resolve_pad_width(val)
+    return tuple(w if w is not None else (0, 0) for w in widths)
+
+
+def _pad_callable(named, widths, fn, kwargs):
+    out = named
+    for ax, (lo, hi) in zip(named.axes, widths):
+        if lo == 0 and hi == 0:
+            continue
+        out = util.ensure_named("pad", fn(out, ax, (lo, hi), **kwargs))
+        got = resolve_axes(out.axes, ax)[0]
+        if got.size != ax.size + lo + hi:
+            raise ValueError(f"pad callable returned size {got} for axis {ax.name!r}, expected {ax.size + lo + hi}")
+    return out
+
+
+def pad(
+    array: NamedArrayLike, pad_width: PadSpec, mode: str | Callable[..., Any] = "constant", **kwargs
+) -> NamedArray:
+    named = util.ensure_named("pad", array)
+    widths = _normalize_pad_width(named.axes, pad_width)
+    out_axes = tuple(Axis(ax.size + lo + hi, ax.name) for ax, (lo, hi) in zip(named.axes, widths))
+
+    if callable(mode):
+        return _pad_callable(named, widths, mode, kwargs)
+
+    jax_array = jnp.pad(named.array, widths, mode=mode, **kwargs)
+    return constructors.array(jax_array, out_axes)
+
+
+def stack(): ...
+
+
+def unstack(): ...
+
+
+def tile(): ...
+
+
+def concatenate(): ...
+
+
+def concat(): ...
+
+
+def choices(): ...
+
+
+def block(): ...
+
+
+# array value operations
+
+
+def astype(a: NamedArrayLike, dtype: DTypeLike | None) -> NamedArray:
+    a = util.ensure_named("astype", a)
+    return eqx.tree_at(lambda x: x.array, a, replace_fn=lambda x: jnp.astype(x, dtype))
+
+
+def clip(a: NamedArrayLike, *, min: NamedArrayLike | None = None, max: NamedArrayLike | None = None) -> NamedArray:
+    a = util.ensure_named("clip", a)
+
+    if any(iscomplexobj(t) for t in (a, min, max)):
+        raise ValueError(
+            "Clip received a complex value either through the input or the min/max keywords. Complex values have no "
+            "ordering and cannot be clipped. Please convert to a real value or array by taking the real or imaginary "
+            "components via jax.numpy.real/imag respectively."
+        )
+
+    if min is not None:
+        a = ufuncs.maximum(min, a)
+    if max is not None:
+        a = ufuncs.minimum(max, a)
+
+    return constructors.array(a, a.axes)
+
+
+def round(a: NamedArrayLike, decimals: int = 0) -> NamedArray:
+    a = util.ensure_named("round", a)
+    return eqx.tree_at(lambda x: x.array, a, replace_fn=lambda x: jnp.round(x, decimals))
+
+
+def around(a: NamedArrayLike, decimals: int = 0) -> NamedArray:
+    return round(a, decimals)
+
+
+def compress(condition: NamedArrayLike, a: NamedArrayLike, *, fill_value) -> NamedArray:
+    raise NotImplementedError()
+
+
+def where(condition: NamedArrayLike, x: NamedArrayLike, y: NamedArrayLike) -> NamedArray:
+    condition, x, y = broadcast_arrays(condition, x, y)
+
+    jax_array = jnp.where(condition.array, x.array, y.array)
+    return constructors.array(jax_array, x.axes)
+
+
+def conj(a: NamedArrayLike) -> NamedArray:
+    a = util.ensure_named("conj", a)
+    return eqx.tree_at(lambda x: x.array, a, replace_fn=lambda x: jnp.conj(x))
+
+
+def conjugate(a: NamedArray) -> NamedArray:
+    a = util.ensure_named("conjugate", a)
+    return eqx.tree_at(lambda x: x.array, a, replace_fn=lambda x: jnp.conjugate(x))
