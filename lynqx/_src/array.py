@@ -2,11 +2,11 @@ import operator as op
 
 import equinox as eqx
 import jax.numpy as jnp
-import numpy as np
 import wadler_lindig as wl
 from jax import Array
 from jax.sharding import Sharding
 
+from lynqx._src.axis_util import check_unique_axis_names
 from lynqx._src.typing import Axis, NamedArray
 
 
@@ -21,6 +21,8 @@ def _validate_shape(array: Array, axes: tuple[Axis, ...]) -> None:
             raise ValueError(
                 f"Axis {ax.label!r} at position {i} has declared size {ax.size} but array has size {size}"
             )
+
+    check_unique_axis_names(axes)
 
 
 class NamedArrayImpl(NamedArray, eqx.Module):
@@ -39,6 +41,10 @@ class NamedArrayImpl(NamedArray, eqx.Module):
         return self.array.dtype
 
     @property
+    def itemsize(self) -> int:
+        return self.dtype.itemsize
+
+    @property
     def nbytes(self) -> int:
         return self.array.nbytes
 
@@ -54,13 +60,8 @@ class NamedArrayImpl(NamedArray, eqx.Module):
     def sharding(self) -> Sharding:
         return self.array.sharding
 
-    def scalar(self) -> Array:
-        if self.array.ndim != 0:
-            raise ValueError(f"Expected scalar, got {self.array.ndim}-dimensional array")
-        return self.array
-
     def __pdoc__(self, **kwargs) -> wl.AbstractDoc:
-        """Wadler–Lindig pretty-printer for NamedArrayImpl.
+        """Wadler-Lindig pretty-printer for NamedArrayImpl.
 
         Default (compact):
             f32[x:32, y:32]
@@ -107,11 +108,6 @@ class NamedArrayImpl(NamedArray, eqx.Module):
             return self.shape[0]
         except IndexError as err:
             raise TypeError("len() of unsized object") from err  # same as numpy error
-
-    # matplotlib compability
-    def __array__(self, dtype: np.dtype | None = None, copy: bool | None = None):
-        kwds = {} if copy is None else {"copy": copy}
-        return np.asarray(self.array, dtype=dtype, **kwds)  # pyrefly: ignore[no-matching-overload]
 
     def __bool__(self):
         return bool(self.array)
