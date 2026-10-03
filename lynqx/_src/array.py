@@ -2,7 +2,6 @@ import operator as op
 
 import equinox as eqx
 import jax.numpy as jnp
-import numpy as np
 import wadler_lindig as wl
 from jax import Array
 from jax.sharding import Sharding
@@ -109,11 +108,6 @@ class NamedArrayImpl(NamedArray, eqx.Module):
             return self.shape[0]
         except IndexError as err:
             raise TypeError("len() of unsized object") from err  # same as numpy error
-
-    # matplotlib compatibility
-    def __array__(self, dtype: np.dtype | None = None, copy: bool | None = None):
-        kwds = {} if copy is None else {"copy": copy}
-        return np.asarray(self.array, dtype=dtype, **kwds)  # pyrefly: ignore[no-matching-overload]
 
     def __bool__(self):
         return bool(self.array)
