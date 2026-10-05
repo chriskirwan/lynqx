@@ -3,6 +3,7 @@ from jax import Device
 from jax.lax import PrecisionLike
 from jax.typing import DTypeLike
 
+from lynqx._src.array import NamedArrayImpl
 from lynqx._src.axis import AxisSelector
 from lynqx._src.named import constructors, indexing, operations, reductions, tensor_contractions, ufuncs, util
 from lynqx._src.sharding import device_put
@@ -71,11 +72,11 @@ def _compress(self: NamedArray) -> NamedArray:
     raise NotImplementedError()
 
 
-def _conj(self) -> NamedArray:
+def _conj(self: NamedArray) -> NamedArray:
     return operations.conj(self)
 
 
-def _conjugate(self) -> NamedArray:
+def _conjugate(self: NamedArray) -> NamedArray:
     return operations.conjugate(self)
 
 
@@ -198,6 +199,10 @@ def _real_property(self: NamedArray) -> NamedArray:
     return ufuncs.real(self)
 
 
+def _rename(self: NamedArrayLike, axis: AxisSelector, name: str | None = None) -> NamedArray:
+    return operations.rename(self, axis, name)
+
+
 def _repeat(
     self: NamedArray,
     repeats: NamedArrayLike,
@@ -209,11 +214,11 @@ def _repeat(
 
 
 def _reshape(self: NamedArray, shape: AxisShape, *, out_sharding: ShardingLike | None = None) -> NamedArray:
-    raise NotImplementedError()
+    return operations.reshape(self, shape, out_sharding=out_sharding)
 
 
 def _round(self: NamedArray, decimals: int = 0) -> NamedArray:
-    raise NotImplementedError()
+    return operations.round(self, decimals)
 
 
 def _searchsorted(
@@ -601,4 +606,4 @@ def _set_namedarray_attributes(array_impl, include=None, exclude=None):
 
 
 def register_namedarray_methods():
-    _set_namedarray_attributes(NamedArray)
+    _set_namedarray_attributes(NamedArrayImpl)
