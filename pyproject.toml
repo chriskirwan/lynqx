@@ -62,7 +62,7 @@ dev = [
     "pyqt6>=6.11.0",
     "pyrefly>=1.3.0",
 ]
-docs = ["zensical>=0.0.62"]
+docs = ["zensical>=0.0.65"]
 test = [
     "beartype>=0.22.9",
     "hypothesis>=6.168.0",
