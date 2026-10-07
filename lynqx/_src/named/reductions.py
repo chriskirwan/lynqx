@@ -5,7 +5,7 @@ from jax.typing import DTypeLike
 
 from lynqx._src.axis_util import axis_indices, axis_selection_to_tuple, remove_axes
 from lynqx._src.named import constructors, operations, util
-from lynqx._src.typing import AxisLike, AxisSelection, NamedArray, NamedArrayLike
+from lynqx._src.typing import AxisLike, AxisSelection, NamedArray, NamedArrayLike, ScalarLike
 
 
 py_any = any
@@ -117,7 +117,7 @@ def _reduce_one_leaf(
         kwargs["where"] = where.array
 
     if initial is not None:
-        kwargs["initial"] = initial
+        kwargs["initial"] = initial.array if isinstance(initial, NamedArray) else initial
 
     if axis is None:
         result = fn(a.array, axis=None, **kwargs)
@@ -193,13 +193,12 @@ def all(
     return wrap_reduction_call(jnp.all)(array, axis, keepdims=keepdims, where=where)
 
 
-# TODO: restrict typehints on `initial` to Scalar (Scalar NamedArray, Scalar Array, Python Scalars)
 def sum(
     array: NamedArrayLike,
     axis: AxisSelection | None = None,
     dtype: DTypeLike | None = None,
     keepdims: bool = False,
-    initial: NamedArrayLike | None = None,
+    initial: ScalarLike | None = None,
     where: NamedArrayLike | None = None,
     promote_integers: bool = True,
 ) -> NamedArray:
@@ -222,13 +221,12 @@ def sum(
     )
 
 
-# TODO: restrict typehints on `initial` to Scalar (Scalar NamedArray, Scalar Array, Python Scalars)
 def prod(
     array: NamedArrayLike,
     axis: AxisSelection | None = None,
     dtype: DTypeLike | None = None,
     keepdims: bool = False,
-    initial: NamedArrayLike | None = None,
+    initial: ScalarLike | None = None,
     where: NamedArrayLike | None = None,
     promote_integers: bool = True,
 ) -> NamedArray:
@@ -333,12 +331,11 @@ def var(
     )
 
 
-# TODO: restrict typehints on `initial` to Scalar (Scalar NamedArray, Scalar Array, Python Scalars)
 def min(
     array: NamedArrayLike,
     axis: AxisSelection | None = None,
     keepdims: bool = False,
-    initial: NamedArrayLike | None = None,
+    initial: ScalarLike | None = None,
     where: NamedArrayLike | None = None,
 ) -> NamedArray:
     """Compute the minimum over the selected axes.
@@ -358,12 +355,11 @@ def min(
     )
 
 
-# TODO: restrict typehints on `initial` to Scalar (Scalar NamedArray, Scalar Array, Python Scalars)
 def max(
     array: NamedArrayLike,
     axis: AxisSelection | None = None,
     keepdims: bool = False,
-    initial: NamedArrayLike | None = None,
+    initial: ScalarLike | None = None,
     where: NamedArrayLike | None = None,
 ) -> NamedArray:
     """Compute the maximum over the selected axes.
@@ -383,11 +379,10 @@ def max(
     )
 
 
-# TODO: restrict typehints on `initial` to Scalar (Scalar NamedArray, Scalar Array, Python Scalars)
 def amin(
     array: NamedArrayLike,
     axis: AxisSelection | None = None,
-    initial: NamedArrayLike | None = None,
+    initial: ScalarLike | None = None,
     keepdims: bool = False,
     where: NamedArrayLike | None = None,
 ) -> NamedArray:
@@ -408,12 +403,11 @@ def amin(
     )
 
 
-# TODO: restrict typehints on `initial` to Scalar (Scalar NamedArray, Scalar Array, Python Scalars)
 def amax(
     array: NamedArrayLike,
     axis: AxisSelection | None = None,
     keepdims: bool = False,
-    initial: NamedArrayLike | None = None,
+    initial: ScalarLike | None = None,
     where: NamedArrayLike | None = None,
 ) -> NamedArray:
     """Compute the maximum over the selected axes; alias of :func:`max`.

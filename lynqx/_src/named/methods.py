@@ -7,7 +7,16 @@ from lynqx._src.array import NamedArrayImpl
 from lynqx._src.axis import AxisSelector
 from lynqx._src.named import constructors, indexing, operations, reductions, tensor_contractions, ufuncs, util
 from lynqx._src.sharding import device_put
-from lynqx._src.typing import AxisLike, AxisSelection, AxisShape, NamedArray, NamedArrayLike, NamedIndex, ShardingLike
+from lynqx._src.typing import (
+    AxisLike,
+    AxisSelection,
+    AxisShape,
+    NamedArray,
+    NamedArrayLike,
+    NamedIndex,
+    ScalarLike,
+    ShardingLike,
+)
 
 
 def _all(
@@ -45,11 +54,13 @@ def _argsort(
     return reductions.argsort(self, axis, kind=kind, order=order, dtype=dtype)
 
 
-def _astype(self: NamedArray, copy) -> NamedArray:
-    raise NotImplementedError()
+def _astype(
+    self: NamedArray, dtype: DTypeLike | None = None, copy: bool = False, device: Device | ShardingLike | None = None
+) -> NamedArray:
+    return operations.astype(self, dtype, copy=copy, device=device)
 
 
-def _byteswap(self) -> NamedArray:
+def _byteswap(self: NamedArray) -> NamedArray:
     """Swap the bytes of the array elements.
 
     This switches between a little-endian and big-endian data representation.
@@ -57,7 +68,8 @@ def _byteswap(self) -> NamedArray:
     Returns:
         An array with the same dtype as ``self``, with underlying bytes of each entry reversed.
     """
-    raise NotImplementedError()
+    jax_array = self.array.byteswap()
+    return constructors.array(jax_array, self.axes)
 
 
 def _choose(self: NamedArray) -> NamedArray:
@@ -149,7 +161,7 @@ def _max(
     self: NamedArray,
     axis: AxisSelection | None = None,
     keepdims: bool = False,
-    initial: NamedArrayLike | None = None,
+    initial: ScalarLike | None = None,
     where: NamedArrayLike | None = None,
 ) -> NamedArray:
     return reductions.max(self, axis, keepdims, initial, where)
@@ -169,7 +181,7 @@ def _min(
     self: NamedArray,
     axis: AxisSelection | None = None,
     keepdims: bool = False,
-    initial: NamedArrayLike | None = None,
+    initial: ScalarLike | None = None,
     where: NamedArrayLike | None = None,
 ) -> NamedArray:
     return reductions.min(self, axis, keepdims, initial, where)
@@ -184,7 +196,7 @@ def _prod(
     axis: AxisSelection | None = None,
     dtype: DTypeLike | None = None,
     keepdims: bool = False,
-    initial: NamedArrayLike | None = None,
+    initial: ScalarLike | None = None,
     where: NamedArrayLike | None = None,
     promote_integers: bool = True,
 ) -> NamedArray:
@@ -260,7 +272,7 @@ def _sum(
     axis: AxisSelection,
     dtype: DTypeLike | None = None,
     keepdims: bool = False,
-    initial: NamedArrayLike | None = None,
+    initial: ScalarLike | None = None,
     where: NamedArrayLike | None = None,
     promote_integers: bool = False,
 ) -> NamedArray:
