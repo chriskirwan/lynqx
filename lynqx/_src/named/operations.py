@@ -2,17 +2,19 @@ import operator
 from collections.abc import Callable, Mapping, Sequence
 from functools import reduce
 from math import prod
-from typing import Any
+from typing import Any, Literal, overload
 
 import equinox as eqx
 import jax.lax
 import jax.numpy as jnp
+from jax import Device
 from jax.typing import DTypeLike
 
 from lynqx._src.axis import AxisLike
 from lynqx._src.axis_util import (
     axis_index,
     axis_indices,
+    axis_names,
     axis_shape_to_tuple,
     axis_sizes,
     match_axes,
@@ -30,12 +32,6 @@ from lynqx._src.typing import Axis, AxisSelection, AxisSelector, AxisShape, Name
 
 def iscomplexobj(x: Any) -> bool:
     return jnp.iscomplexobj(x)
-
-
-def allclose(): ...
-
-
-def isclose(): ...
 
 
 # Broadcasting support
@@ -166,6 +162,120 @@ def broadcast_shapes(*shapes: AxisShape) -> tuple[Axis, ...]:
 
 
 # Additional creation operations
+
+
+@overload
+def linspace(
+    start: NamedArrayLike,
+    stop: NamedArrayLike,
+    axis: AxisLike,
+    endpoint: bool = True,
+    retstep: Literal[False] = False,
+    dtype: DTypeLike | None = None,
+    *,
+    out_sharding: ShardingLike | None = None,
+) -> NamedArray: ...
+
+
+@overload
+def linspace(
+    start: NamedArrayLike,
+    stop: NamedArrayLike,
+    axis: AxisLike,
+    endpoint: bool = True,
+    *,
+    retstep: Literal[True],
+    dtype: DTypeLike | None = None,
+    out_sharding: ShardingLike | None = None,
+) -> tuple[NamedArray, NamedArray]: ...
+
+
+@overload
+def linspace(
+    start: NamedArrayLike,
+    stop: NamedArrayLike,
+    axis: AxisLike,
+    endpoint: bool = True,
+    retstep: bool = False,
+    dtype: DTypeLike | None = None,
+    *,
+    out_sharding: ShardingLike | None = None,
+) -> NamedArray | tuple[NamedArray, NamedArray]: ...
+
+
+def linspace(
+    start: NamedArrayLike,
+    stop: NamedArrayLike,
+    axis: AxisLike,
+    endpoint: bool = True,
+    retstep: bool = False,
+    dtype: DTypeLike | None = None,
+    *,
+    out_sharding: ShardingLike | None = None,
+) -> NamedArray | tuple[NamedArray, NamedArray]:
+    if isinstance(axis, str):
+        axis = Axis(50, axis)  # numpy default
+
+    (start, stop), common_axes = broadcast_arrays_and_shape(start, stop)
+    if axis.name in axis_names(common_axes):
+        raise ValueError(f"Axis {axis} already exists in one of the input arrays.")
+
+    jax_array = jnp.linspace(start.array, stop.array, axis.size, endpoint=endpoint, retstep=retstep, dtype=dtype)
+
+    out_axes = (axis,) + common_axes
+    step = None
+    if retstep:
+        jax_array, jax_array_step = jax_array
+        step = constructors.array(jax_array_step, common_axes)
+
+    result = constructors.array(jax_array, out_axes, out_sharding=out_sharding)
+
+    return (result, step) if step is not None else result
+
+
+def logspace(
+    start: NamedArrayLike,
+    stop: NamedArrayLike,
+    axis: AxisLike,
+    endpoint: bool = True,
+    base: NamedArrayLike = 10.0,
+    dtype: DTypeLike | None = None,
+    *,
+    out_sharding: ShardingLike | None = None,
+) -> NamedArray:
+    if isinstance(axis, str):
+        axis = Axis(50, axis)  # numpy default
+
+    (start, stop, base), common_axes = broadcast_arrays_and_shape(start, stop, base)
+    if axis.name in axis_names(common_axes):
+        raise ValueError(f"Axis {axis} already exists in one of the input arrays")
+
+    jax_array = jnp.logspace(start.array, stop.array, axis.size, endpoint=endpoint, base=base.array, dtype=dtype)
+
+    out_axes = (axis,) + common_axes
+    return constructors.array(jax_array, out_axes, out_sharding=out_sharding)
+
+
+def geomspace(
+    start: NamedArrayLike,
+    stop: NamedArrayLike,
+    axis: AxisLike,
+    endpoint: bool = True,
+    dtype: DTypeLike | None = None,
+    *,
+    out_sharding: ShardingLike | None = None,
+) -> NamedArray:
+    if isinstance(axis, str):
+        axis = Axis(50, axis)  # numpy default
+
+    (start, stop), common_axes = broadcast_arrays_and_shape(start, stop)
+    if axis.name in axis_names(common_axes):
+        raise ValueError(f"Axis {axis} already exists in one of the input arrays")
+
+    jax_array = jnp.geomspace(start.array, stop.array, axis.size, endpoint=endpoint, dtype=dtype)
+
+    out_axes = (axis,) + common_axes
+    return constructors.array(jax_array, out_axes, out_sharding=out_sharding)
 
 
 def delta(
@@ -520,9 +630,23 @@ def block(): ...
 # array value operations
 
 
-def astype(a: NamedArrayLike, dtype: DTypeLike | None) -> NamedArray:
+def astype(
+    a: NamedArrayLike, dtype: DTypeLike | None, *, copy: bool = False, device: Device | ShardingLike | None = None
+) -> NamedArray:
     a = util.ensure_named("astype", a)
-    return eqx.tree_at(lambda x: x.array, a, replace_fn=lambda x: jnp.astype(x, dtype))
+    return eqx.tree_at(lambda x: x.array, a, replace_fn=lambda x: jnp.astype(x, dtype, copy=copy, device=device))
+
+
+def allclose(): ...
+
+
+def isclose(): ...
+
+
+def array_equal(): ...
+
+
+def array_equiv(): ...
 
 
 def clip(a: NamedArrayLike, *, min: NamedArrayLike | None = None, max: NamedArrayLike | None = None) -> NamedArray:
@@ -632,3 +756,21 @@ def searchsorted(
     jax_array = jnp.searchsorted(a.array, v.array, side=side, sorter=jax_sorter, method=method)
 
     return constructors.array(jax_array, v.axes)
+
+
+# windows
+def bartlett(M: Axis) -> NamedArray:
+    return constructors.array(jnp.bartlett(M.size), M)
+
+
+def blackman(M: Axis) -> NamedArray:
+    return constructors.array(jnp.blackman(M.size), M)
+
+
+def hanning(M: Axis) -> NamedArray:
+    return constructors.array(jnp.hanning(M.size), M)
+
+
+def kaiser(M: Axis, beta: NamedArrayLike) -> NamedArray:
+    beta = util.ensure_named("kaiser", beta)
+    return constructors.array(jnp.kaiser(M.size, beta.array), M)
