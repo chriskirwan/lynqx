@@ -125,15 +125,6 @@ class TestReflectedShiftOperators:
 
         assert jnp.array_equal(got.array, want.array)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "_operator_rrshift computes `ufuncs.right_shift(self, other)` instead "
-            "of `ufuncs.right_shift(other, self)` -- argument order isn't reversed, "
-            "unlike every other reflected operator in methods.py (compare against "
-            "_operator_rlshift, which reverses correctly)."
-        ),
-    )
     def test_rrshift_reverses_argument_order(self, x4):
         a = array(jnp.array([1, 2, 3, 4], dtype=jnp.int32), (x4,))
 
