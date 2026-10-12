@@ -55,7 +55,7 @@ project-excludes = [
 [dependency-groups]
 dev = [
     "pre-commit>=4.6.2",
-    "ipykernel>=7.3.0",
+    "ipykernel>=7.4.0",
     "rich>=15.0.0",
     "ruff>=0.16.9",
     "matplotlib>=3.11.2",
