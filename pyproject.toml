@@ -18,7 +18,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cpu = []
 gpu = ["jax[cuda13]"]
 
 [build-system]
