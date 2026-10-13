@@ -30,7 +30,20 @@ from lynqx._src.typing import Axis, AxisSelection, AxisSelector, AxisShape, Name
 # utility functions
 
 
+def iscomplex(x: NamedArrayLike):
+    """Return boolean array showing where the input is complex."""
+
+    x = util.ensure_named("iscomplex", x)
+    return constructors.array(jnp.iscomplex(x.array), ())
+
+
 def iscomplexobj(x: Any) -> bool:
+    """Check if the input is a complex number or an array containing complex elements.
+
+    The function evaluates based on input type rather than value. Inputs with zero imaginary parts are still considered
+    complex.
+    """
+
     return jnp.iscomplexobj(x)
 
 
@@ -606,25 +619,326 @@ def ravel(a: NamedArrayLike, name: AxisLike | None = None) -> NamedArray:
     return constructors.array(jax_array, (flat_axis,))
 
 
-def stack(arrays: Sequence[NamedArrayLike]): ...
+def _normalize_insert_index(index: int, ndim: int, fn_name: str) -> int:
+    """Normalise the insertion position of a new axis to ``[0, ndim]``.
+
+    `ndim` is the rank of the *inputs*, so the output has rank `ndim + 1` and valid values are
+    `-(ndim + 1) <= index <= ndim`; `-1` appends.
+    """
+    if isinstance(index, bool) or not isinstance(index, int):
+        raise TypeError(f"{fn_name}: `index` must be an int, got {type(index).__name__}")
+    if not -(ndim + 1) <= index <= ndim:
+        raise ValueError(
+            f"{fn_name}: `index` {index} is out of range for inserting into {ndim} existing axes; "
+            f"expected {-(ndim + 1)} <= index <= {ndim}"
+        )
+    return index + ndim + 1 if index < 0 else index
 
 
-def unstack(): ...
+def _align_permutation(ref: Sequence[Axis], axes: Sequence[Axis], fn_name: str, position: int) -> tuple[int, ...]:
+    """Find ``perm`` such that ``axes[perm[i]]`` corresponds to ``ref[i]``.
+
+    Named axes correspond by name. Anonymous axes correspond by order of appearance, which never needs to compare
+    sizes, so repeated anonymous axes of the same size are not ambiguous and anonymous axes of different sizes can
+    still be paired up.
+    """
+    if len(ref) != len(axes):
+        raise ValueError(
+            f"{fn_name}: array at position {position} has {len(axes)} axes but the first array has {len(ref)}; "
+            f"all arrays must have the same axes"
+        )
+
+    name_to_pos = {ax.name: i for i, ax in enumerate(axes) if ax.name is not None}
+    anonymous = iter(i for i, ax in enumerate(axes) if ax.name is None)
+
+    perm: list[int] = []
+    for ax in ref:
+        if ax.name is None:
+            nxt = next(anonymous, None)
+            if nxt is None:
+                raise ValueError(
+                    f"{fn_name}: array at position {position} has fewer anonymous axes than the first array"
+                )
+            perm.append(nxt)
+        elif ax.name in name_to_pos:
+            perm.append(name_to_pos[ax.name])
+        else:
+            raise ValueError(
+                f"{fn_name}: array at position {position} has no axis named {ax.name!r}; its axes are "
+                f"{tuple(a.label for a in axes)}"
+            )
+    return tuple(perm)
 
 
-def tile(arrays: Sequence[NamedArrayLike], reps: int | tuple[int, ...]): ...
+def _canonicalize_arrays(fn_name: str, arrays: Sequence[NamedArray], *, free: int | None = None):
+    """Permute every array's axes into the order of the first array and check sizes."""
+    ref = arrays[0].axes
+    identity = tuple(range(len(ref)))
+
+    jax_arrays = []
+    for position, arr in enumerate(arrays):
+        perm = _align_permutation(ref, arr.axes, fn_name, position)
+        for i, p in enumerate(perm):
+            if i != free and arr.axes[p].size != ref[i].size:
+                raise ValueError(
+                    f"{fn_name}: axis {ref[i].label!r} has size {arr.axes[p].size} in the array at position "
+                    f"{position} but size {ref[i].size} in the first array"
+                )
+        jax_arrays.append(arr.array if perm == identity else jnp.transpose(arr.array, perm))
+
+    return ref, jax_arrays
 
 
-def concatenate(arrays: Sequence[NamedArrayLike]): ...
+def stack(
+    arrays: Sequence[NamedArrayLike],
+    axis: AxisLike,
+    dtype: DTypeLike | None = None,
+    *,
+    index: int = 0,
+    out_sharding: ShardingLike | None = None,
+) -> NamedArray:
+    """Join arrays along a new axis.
+
+    All arrays must have the same axes. Named axes are matched by name (so they may appear in different orders);
+    anonymous axes are matched by order of appearance. The result uses the axis order of the first array.
+
+    Args:
+        arrays: The arrays to stack.
+        axis: The new axis. A string creates a new axis of that name with size ``len(arrays)``; an `Axis` must have
+            size ``len(arrays)``.
+        dtype: Optional dtype of the result.
+        index: Position at which the new axis is inserted into the result. Negative values count from the end of
+            the *result*, so ``-1`` appends the new axis last. Defaults to ``0``.
+        out_sharding: Optional sharding specification for the output array.
+
+    Returns:
+        A `NamedArray` with one more axis than the inputs.
+    """
+    named = util.ensure_named_tuple("stack", tuple(arrays))
+    if not named:
+        raise ValueError("stack requires at least one array")
+
+    if isinstance(axis, str):
+        axis = Axis(len(named), axis)
+    elif axis.size != len(named):
+        raise ValueError(f"stack: new axis {axis!r} has size {axis.size} but {len(named)} arrays were provided")
+
+    ref, jax_arrays = _canonicalize_arrays("stack", named)
+
+    if axis.name is not None and axis.name in axis_names(ref):
+        raise ValueError(f"stack: new axis {axis.name!r} already exists in the input arrays")
+
+    position = _normalize_insert_index(index, len(ref), "stack")
+    jax_array = jnp.stack(jax_arrays, axis=position, dtype=dtype)
+
+    out_axes = ref[:position] + (axis,) + ref[position:]
+    return constructors.array(jax_array, out_axes, out_sharding=out_sharding)
 
 
-def concat(): ...
+def unstack(a: NamedArrayLike, axis: AxisSelector = 0) -> tuple[NamedArray, ...]:
+    """Split an array into a tuple of arrays along an axis, removing that axis.
+
+    This is the inverse of `stack`.
+
+    Args:
+        a: The array to split.
+        axis: The axis to split along. Defaults to the first axis.
+
+    Returns:
+        A tuple of ``a.axes[axis].size`` arrays, each with the selected axis removed.
+    """
+    named = util.ensure_named("unstack", a)
+
+    idx = axis_index(named.axes, axis)
+    if idx is None:
+        raise ValueError(f"unstack: axis {axis!r} not found in {named.axes}")
+
+    out_axes = named.axes[:idx] + named.axes[idx + 1 :]
+    return tuple(constructors.array(x, out_axes) for x in jnp.unstack(named.array, axis=idx))
 
 
-def choices(): ...
+TileReps = int | Sequence[int] | Mapping[AxisSelector, int]
 
 
-def block(): ...
+def tile(a: NamedArrayLike, reps: TileReps, *, out_sharding: ShardingLike | None = None) -> NamedArray:
+    """Repeat an array along its existing axes.
+
+    Unlike `numpy.tile`, this never prepends axes: ``reps`` is always interpreted per existing axis, and each
+    axis of size ``n`` with repetition ``r`` becomes an axis of size ``n * r`` (names are preserved).
+
+    Args:
+        a: The array to tile.
+        reps: Either a single int applied to every axis, a sequence with one entry per axis (in axis order), or
+            a mapping from axis selectors to repetitions, where unlisted axes are repeated once.
+        out_sharding: Optional sharding specification for the output array.
+
+    Returns:
+        The tiled array, with the same axis names and order as ``a``.
+    """
+    named = util.ensure_named("tile", a)
+    ndim = len(named.axes)
+
+    if isinstance(reps, Mapping):
+        per_axis = [1] * ndim
+        seen: set[int] = set()
+        for key, r in reps.items():
+            idx = axis_index(named.axes, key)
+            if idx is None:
+                raise ValueError(f"tile: axis {key!r} not found in {named.axes}")
+            if idx in seen:
+                raise ValueError(f"tile: axis {named.axes[idx].label!r} appears more than once in `reps`")
+            seen.add(idx)
+            per_axis[idx] = r
+        rep_tuple = tuple(per_axis)
+    elif isinstance(reps, int):
+        rep_tuple = (reps,) * ndim
+    else:
+        rep_tuple = tuple(reps)
+        if len(rep_tuple) != ndim:
+            raise ValueError(
+                f"tile: `reps` has {len(rep_tuple)} entries but the array has {ndim} axes; "
+                f"use a mapping to repeat only some axes"
+            )
+
+    for r in rep_tuple:
+        if isinstance(r, bool) or not isinstance(r, int) or r < 1:
+            raise ValueError(f"tile: repetitions must be positive integers, got {rep_tuple}")
+
+    if ndim == 0:
+        return named
+
+    out_axes = tuple(ax.resize(ax.size * r) for ax, r in zip(named.axes, rep_tuple))
+    jax_array = jnp.tile(named.array, rep_tuple)
+    return constructors.array(jax_array, out_axes, out_sharding=out_sharding)
+
+
+def concatenate(
+    arrays: Sequence[NamedArrayLike],
+    axis: AxisSelector = 0,
+    dtype: DTypeLike | None = None,
+    *,
+    out_sharding: ShardingLike | None = None,
+) -> NamedArray:
+    """Join arrays along an existing axis.
+
+    All arrays must have the same axes, and sizes must agree on every axis except the one being joined. Named
+    axes are matched by name; anonymous axes by order of appearance. The result uses the axis order of the first
+    array.
+
+    Args:
+        arrays: The arrays to concatenate.
+        axis: The axis to join along. Selectors are resolved against the first array. Defaults to the first axis.
+        dtype: Optional dtype of the result.
+        out_sharding: Optional sharding specification for the output array.
+
+    Returns:
+        A `NamedArray` whose size along ``axis`` is the sum of the input sizes.
+    """
+    named = util.ensure_named_tuple("concatenate", tuple(arrays))
+    if not named:
+        raise ValueError("concatenate requires at least one array")
+    if not named[0].axes:
+        raise ValueError("concatenate: zero-dimensional arrays cannot be concatenated")
+
+    idx = axis_index(named[0].axes, axis)
+    if idx is None:
+        raise ValueError(f"concatenate: axis {axis!r} not found in {named[0].axes}")
+
+    ref, jax_arrays = _canonicalize_arrays("concatenate", named, free=idx)
+    jax_array = jnp.concatenate(jax_arrays, axis=idx, dtype=dtype)
+
+    out_axes = ref[:idx] + (ref[idx].resize(jax_array.shape[idx]),) + ref[idx + 1 :]
+    return constructors.array(jax_array, out_axes, out_sharding=out_sharding)
+
+
+def concat(
+    arrays: Sequence[NamedArrayLike],
+    axis: AxisSelector = 0,
+    dtype: DTypeLike | None = None,
+    *,
+    out_sharding: ShardingLike | None = None,
+) -> NamedArray:
+    """Alias of `concatenate`."""
+    return concatenate(arrays, axis, dtype, out_sharding=out_sharding)
+
+
+def choose(a: NamedArrayLike, choices: Sequence[NamedArrayLike], *, mode: str = "raise") -> NamedArray:
+    """Construct an array by picking, element-wise, from a sequence of choice arrays.
+
+    ``result[idx] = choices[a[idx]][idx]`` after broadcasting ``a`` and all ``choices`` to a common shape.
+
+    Args:
+        a: Integer array of indices into ``choices``.
+        choices: The arrays to choose from; they must be broadcast-compatible with ``a`` and each other.
+        mode: How to treat out-of-bounds indices: ``'raise'`` (default; not compatible with JAX transformations),
+            ``'wrap'`` or ``'clip'``.
+
+    Returns:
+        A `NamedArray` with the broadcast axes of ``a`` and ``choices``.
+    """
+    choices = tuple(choices)
+    if not choices:
+        raise ValueError("choose requires at least one choice array")
+
+    (a_b, *choices_b), common_axes = broadcast_arrays_and_shape(a, *choices)
+    jax_array = jnp.choose(a_b.array, [c.array for c in choices_b], mode=mode)
+    return constructors.array(jax_array, common_axes)
+
+
+BlockSpec = NamedArrayLike | Sequence[NamedArrayLike]
+
+
+def _block_depth(x: Any) -> int:
+    if isinstance(x, (list, tuple)):
+        if not x:
+            raise ValueError("block: empty lists are not allowed")
+        depths = {_block_depth(e) for e in x}
+        if len(depths) != 1:
+            raise ValueError("block: all lists must be nested to the same depth")
+        return depths.pop() + 1
+    return 0
+
+
+def block(
+    arrays: BlockSpec,
+    axes: Sequence[AxisSelector] | None = None,
+    *,
+    out_sharding: ShardingLike | None = None,
+) -> NamedArray:
+    """Assemble an array from nested lists of blocks.
+
+    The list nesting depth ``d`` maps onto ``axes[d]`` (outermost list first): the innermost lists are
+    concatenated along ``axes[-1]``, the next level along ``axes[-2]``, and so on.
+
+    For example, a 2x2 block matrix is ``block([[A, B], [C, D]], axes=("i", "j"))``: ``A, B`` and ``C, D`` are
+    joined along ``"j"`` and the two results are then joined along ``"i"``.
+
+    Args:
+        arrays: A block array, or arbitrarily nested lists (all the same depth) of blocks.
+        axes: One axis selector per nesting level, outermost first. Defaults to the trailing axes in order
+            (``(-depth, ..., -1)``), as in `numpy.block`. Each selector is resolved per concatenation against the
+            first array in that group.
+        out_sharding: Optional sharding specification for the output array.
+
+    Returns:
+        The assembled `NamedArray`.
+    """
+    depth = _block_depth(arrays)
+    if depth == 0:
+        return util.ensure_named("block", arrays)
+
+    if axes is None:
+        axes = tuple(range(-depth, 0))
+    elif len(axes) != depth:
+        raise ValueError(f"block: `arrays` is nested {depth} deep but {len(axes)} axes were given")
+
+    def build(x: Any, level: int, sharding: ShardingLike | None) -> NamedArray:
+        if level == depth:
+            return util.ensure_named("block", x)
+        parts = [build(e, level + 1, None) for e in x]
+        return concatenate(parts, axes[level], out_sharding=sharding)
+
+    return build(arrays, 0, out_sharding)
 
 
 # array value operations
@@ -633,20 +947,106 @@ def block(): ...
 def astype(
     a: NamedArrayLike, dtype: DTypeLike | None, *, copy: bool = False, device: Device | ShardingLike | None = None
 ) -> NamedArray:
+    """Convert an array to a specified dtype.
+
+    JAX implementation of :func:`numpy.astype`.
+
+    This is implemented via :func:`jax.lax.convert_element_type`, which may
+    have slightly different behavior than :func:`numpy.astype` in some cases.
+    In particular, the details of float-to-int and int-to-float casts are
+    implementation dependent.
+
+    Args:
+        x: input array to convert
+        dtype: output dtype
+        copy: if True, then always return a copy. If False (default) then only return a copy if necessary.
+    device: optionally specify the device to which the output will be committed.
+
+    Returns:
+        An array with the same shape as ``x``, containing values of the specified
+        dtype.
+    """
     a = util.ensure_named("astype", a)
     return eqx.tree_at(lambda x: x.array, a, replace_fn=lambda x: jnp.astype(x, dtype, copy=copy, device=device))
 
 
-def allclose(): ...
+def allclose(
+    a: NamedArrayLike,
+    b: NamedArrayLike,
+    rtol: NamedArrayLike = 1e-05,
+    atol: NamedArrayLike = 1e-08,
+    equal_nan: bool = False,
+):
+    r"""Check if two arrays are element-wise approximately equal within a tolerance.
+
+    Essentially this function evaluates the following condition:
+
+    .. math::
+
+     |a - b| \le \mathtt{atol} + \mathtt{rtol} * |b|
+
+    ``jnp.inf`` in ``a`` will be considered equal to ``jnp.inf`` in ``b``.
+
+    Args:
+        a: first input array to compare.
+        b: second input array to compare.
+        rtol: relative tolerance used for approximate equality. Default = 1e-05.
+        atol: absolute tolerance used for approximate equality. Default = 1e-08.
+        equal_nan: Boolean. If ``True``, NaNs in ``a`` will be considered equal to NaNs in ``b``. Default is ``False``.
+
+    Returns:
+        Boolean scalar array indicating whether the input arrays are element-wise approximately equal within the
+        specified tolerances.
+    """
+
+    (a, b, rtol, atol), common_shape = broadcast_arrays_and_shape(a, b, rtol, atol)
+    jax_array = jnp.allclose(a.array, b.array, rtol.array, atol.array, equal_nan)
+    return constructors.asnamedarray(jax_array, common_shape)
 
 
-def isclose(): ...
+def isclose(
+    a: NamedArrayLike,
+    b: NamedArrayLike,
+    rtol: NamedArrayLike = 1e-05,
+    atol: NamedArrayLike = 1e-08,
+    equal_nan: bool = False,
+) -> NamedArray:
+    r"""Check if the elements of two arrays are approximately equal within a tolerance.
+
+    Essentially this function evaluates the following condition:
+
+    .. math::
+
+     |a - b| \le \mathtt{atol} + \mathtt{rtol} * |b|
+
+    ``jnp.inf`` in ``a`` will be considered equal to ``jnp.inf`` in ``b``.
+
+    Args:
+        a: first input array to compare.
+        b: second input array to compare.
+        rtol: relative tolerance used for approximate equality. Default = 1e-05.
+        atol: absolute tolerance used for approximate equality. Default = 1e-08.
+        equal_nan: Boolean. If ``True``, NaNs in ``a`` will be considered equal to NaNs in ``b``. Default is ``False``.
+
+    Returns:
+        A new array containing boolean values indicating whether the input arrays are element-wise approximately equal
+        within the specified tolerances.
+    """
+
+    (a, b, rtol, atol), common_shape = broadcast_arrays_and_shape(a, b, rtol, atol)
+    jax_array = jnp.isclose(a.array, b.array, rtol.array, atol.array, equal_nan)
+    return constructors.asnamedarray(jax_array, common_shape)
 
 
-def array_equal(): ...
+def array_equal(a: NamedArrayLike, b: NamedArrayLike, equal_nan: bool = False):
+    a, b = util.ensure_named("array_equal", a, b)
+    if set(a.axes) != set(b.axes):
+        return constructors.array(False, ())
+    b = transpose(b, a.axes)
+    return constructors.array(jnp.array_equal(a.array, b.array, equal_nan), ())
 
 
-def array_equiv(): ...
+def array_equiv(a: NamedArrayLike, b: NamedArrayLike, equal_nan: bool = False): ...
 
 
 def clip(a: NamedArrayLike, *, min: NamedArrayLike | None = None, max: NamedArrayLike | None = None) -> NamedArray:
@@ -664,7 +1064,7 @@ def clip(a: NamedArrayLike, *, min: NamedArrayLike | None = None, max: NamedArra
     if max is not None:
         a = ufuncs.minimum(max, a)
 
-    return constructors.array(a, a.axes)
+    return constructors.array(a.array, a.axes)
 
 
 def round(a: NamedArrayLike, decimals: int = 0) -> NamedArray:
@@ -747,7 +1147,7 @@ def searchsorted(
     if sorter is None:
         a, v = util.ensure_named("searchsorted", a, v)
     else:
-        a, v, sorter = util.ensure_named("searchsorted", a, v)
+        a, v, sorter = util.ensure_named("searchsorted", a, v, sorter)
 
     if a.ndim != 1:
         raise ValueError("`seachsorted` only supports 1-dimensional `a`")
