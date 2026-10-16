@@ -37,11 +37,11 @@ def iscomplex(a: NamedArrayLike) -> NamedArray:
         x: The input array or scalar.
 
     Returns:
-        A zero-dimensional boolean ``NamedArray`` indicating whether ``x`` is complex.
+        A zero-dimensional boolean ``NamedArray`` indicating whether ``a`` is complex.
     """
 
     a = util.ensure_named("iscomplex", a)
-    return constructors.array(jnp.iscomplex(a.array), ())
+    return constructors.array(jnp.iscomplex(a.array), a.axes)
 
 
 def iscomplexobj(x: Any) -> bool:
