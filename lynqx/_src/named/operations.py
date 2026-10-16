@@ -1459,26 +1459,6 @@ def angle(a: NamedArrayLike, deg: bool = False) -> NamedArray:
     return eqx.tree_at(lambda x: x.array, a, replace_fn=lambda x: jnp.angle(x, deg))
 
 
-def conj(a: NamedArrayLike) -> NamedArray:
-    """Alias of ``conjugate``."""
-    a = util.ensure_named("conj", a)
-    return eqx.tree_at(lambda x: x.array, a, replace_fn=lambda x: jnp.conj(x))
-
-
-def conjugate(a: NamedArrayLike) -> NamedArray:
-    """Return element-wise complex-conjugate of the input.
-
-    Args:
-        a: Input array or scalar
-
-    Returns:
-        A ``NmaedArray`` containing the complex-conjugate of ``a``.
-    """
-
-    a = util.ensure_named("conjugate", a)
-    return eqx.tree_at(lambda x: x.array, a, replace_fn=lambda x: jnp.conjugate(x))
-
-
 # sorting
 
 
