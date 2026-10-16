@@ -37,11 +37,11 @@ def iscomplex(a: NamedArrayLike) -> NamedArray:
         x: The input array or scalar.
 
     Returns:
-        A zero-dimensional boolean ``NamedArray`` indicating whether ``x`` is complex.
+        A zero-dimensional boolean ``NamedArray`` indicating whether ``a`` is complex.
     """
 
     a = util.ensure_named("iscomplex", a)
-    return constructors.array(jnp.iscomplex(a.array), ())
+    return constructors.array(jnp.iscomplex(a.array), a.axes)
 
 
 def iscomplexobj(x: Any) -> bool:
@@ -510,8 +510,9 @@ def diagonal(
 
     batch_axes = remove_axes(a.axes, (axis1, axis2))
     idx0, idx1 = axis_indices(a.axes, (axis1, axis2))
+    n0, n1 = a.axes[idx0].size, a.axes[idx1].size
 
-    diag_axis_size = min(a.axes[idx0].size, a.axes[idx1].size) - abs(offset)
+    diag_axis_size = min(n0, n1 - offset) if offset >= 0 else min(n0 + offset, n1)
     diag_axis = util.resolve_new_axis(diagonal, diag_axis_size, "diagonal", "diagonal")
 
     out_shape = batch_axes + (diag_axis,)
@@ -534,7 +535,7 @@ def _tri_mask(array: NamedArray, axis1: AxisSelector, axis2: AxisSelector, k: in
     col = creation.iota(spec, col_pos, dtype=jnp.int32)
 
     diff = row - col
-    mask = (diff >= k) if upper else (diff <= k)
+    mask = (diff <= k) if upper else (diff >= k)
     return broadcast_to(mask, array.axes)
 
 
@@ -1456,26 +1457,6 @@ def angle(a: NamedArrayLike, deg: bool = False) -> NamedArray:
 
     a = util.ensure_named("angle", a)
     return eqx.tree_at(lambda x: x.array, a, replace_fn=lambda x: jnp.angle(x, deg))
-
-
-def conj(a: NamedArrayLike) -> NamedArray:
-    """Alias of ``conjugate``."""
-    a = util.ensure_named("conj", a)
-    return eqx.tree_at(lambda x: x.array, a, replace_fn=lambda x: jnp.conj(x))
-
-
-def conjugate(a: NamedArrayLike) -> NamedArray:
-    """Return element-wise complex-conjugate of the input.
-
-    Args:
-        a: Input array or scalar
-
-    Returns:
-        A ``NmaedArray`` containing the complex-conjugate of ``a``.
-    """
-
-    a = util.ensure_named("conjugate", a)
-    return eqx.tree_at(lambda x: x.array, a, replace_fn=lambda x: jnp.conjugate(x))
 
 
 # sorting

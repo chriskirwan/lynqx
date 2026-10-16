@@ -85,11 +85,11 @@ def _compress(self: NamedArray) -> NamedArray:
 
 
 def _conj(self: NamedArray) -> NamedArray:
-    return operations.conj(self)
+    return ufuncs.conj(self)
 
 
 def _conjugate(self: NamedArray) -> NamedArray:
-    return operations.conjugate(self)
+    return ufuncs.conjugate(self)
 
 
 def _contains(self: NamedArray, other: NamedArrayLike) -> NamedArray:
