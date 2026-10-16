@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from lynqx._src.array import NamedArrayImpl
 from lynqx._src.axis_util import match_axes
 from lynqx._src.filters import is_named_array, is_scalar
-from lynqx._src.typing import Axis, NamedArray, NamedArrayLike
+from lynqx._src.typing import Axis, AxisLike, NamedArray, NamedArrayLike
 
 
 T = TypeVar("T")
@@ -140,3 +140,26 @@ def ensure_scalar(fn_name: str, /, *args: Any) -> NamedArray | tuple[NamedArray,
     if len(args) == 1:
         return _namedarraylike_to_namedarray(args[0])
     return tuple(_namedarraylike_to_namedarray(arg) for arg in args)
+
+
+def resolve_new_axis(spec: AxisLike | None, size: int, fn_name: str, param: str) -> Axis:
+    """Build an output axis of a routine that has no counterpart in the input.
+
+    This is the shared axis-inference rule for the linalg submodule:
+
+    * ``None``  -> anonymous ``Axis(size)``
+    * ``str``   -> ``Axis(size, name)``
+    * ``Axis``  -> used as given; its size must equal ``size``
+    """
+    if spec is None:
+        return Axis(size)
+    if isinstance(spec, str):
+        return Axis(size, spec)
+    if isinstance(spec, Axis):
+        if spec.size != size:
+            raise ValueError(f"{fn_name}: `{param}` has size {spec.size} but the result axis has size {size}")
+        return spec
+    raise TypeError(
+        f"{fn_name}: `{param}` must be None, a str or an Axis, got {type(spec).__name__}. "
+        "Integer selectors cannot name a new axis."
+    )

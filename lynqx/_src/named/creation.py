@@ -45,13 +45,13 @@ def ones(
     """Create an array full of ones.
 
     Args:
-            shape: specify the shape of the created array.
-            dtype: optional dtype for the created array; defaults to float32 or float64 depending on the X64
-                configuration.
-            out_sharding: optional :class:`~lynqx.PM`, :class:`~jax.P` or :class:`~jax.NamedSharding` specifying the
-                sharding of the output array.
-        Returns:
-            Named array of the specified shape and dtype, with the given device/sharding if specified.
+        shape: specify the shape of the created array.
+        dtype: optional dtype for the created array; defaults to float32 or float64 depending on the X64 configuration.
+        out_sharding: optional :class:`~lynqx.PM`, :class:`~jax.P` or :class:`~jax.NamedSharding` specifying the
+            sharding of the output array.
+
+    Returns:
+        A ``NamedArray`` of the specified shape and dtype, with the given device/sharding if specified.
     """
 
     return full(shape, 1.0, dtype, out_sharding=out_sharding)
@@ -71,7 +71,7 @@ def empty(
         out_sharding: optional :class:`~lynqx.PM`, :class:`~jax.P` or :class:`~jax.NamedSharding` specifying the
             sharding of the output array.
     Returns:
-        Named array of the specified shape and dtype, with the given device/sharding if specified.
+        A ``NamedArray`` of the specified shape and dtype, with the given device/sharding if specified.
     """
 
     return full(shape, 0.0, dtype, out_sharding=out_sharding)
@@ -95,7 +95,7 @@ def full(
             sharding of the output array.
 
     Returns:
-        Named array of the specified shape and dtype, with the given device/sharding if specified.
+        A ``NamedArray`` of the specified shape and dtype, with the given device/sharding if specified.
     """
 
     target = axis_shape_to_tuple(shape)
@@ -127,13 +127,13 @@ def zeros_like(
 
     Args:
         a: NamedArray-like object with ``shape`` and ``dtype`` attributes.
-        shape: optionally override the shape of the created array.
-        dtype: optionally override the dtype of the created array.
-        out_sharding: optional :class:`~lynqx.PM`, :class:`~jax.P` or :class:`~jax.NamedSharding` specifying the
+        shape: Optionally override the shape of the created array.
+        dtype: Optionally override the dtype of the created array.
+        out_sharding: Optional :class:`~lynqx.PM`, :class:`~jax.P` or :class:`~jax.NamedSharding` specifying the
             sharding of the output array.
 
     Returns:
-        Array of the specified shape and dtype, on the specified device if specified.
+        A ``NamedArray`` of the specified shape and dtype, on the specified device if specified.
     """
 
     return full_like(a, 0.0, shape=shape, dtype=dtype, out_sharding=out_sharding)
@@ -150,13 +150,13 @@ def ones_like(
 
     Args:
         a: NamedArray-like object with ``shape`` and ``dtype`` attributes.
-        shape: optionally override the shape of the created array.
-        dtype: optionally override the dtype of the created array.
-        out_sharding: optional :class:`~lynqx.PM`, :class:`~jax.P` or :class:`~jax.NamedSharding` specifying the
+        shape: Optionally override the shape of the created array.
+        dtype: Optionally override the dtype of the created array.
+        out_sharding: Optional :class:`~lynqx.PM`, :class:`~jax.P` or :class:`~jax.NamedSharding` specifying the
             sharding of the output array.
 
     Returns:
-        Array of the specified shape and dtype, on the specified device if specified.
+        A ``NamedArray`` of the specified shape and dtype, on the specified device if specified.
     """
     return full_like(a, 1.0, shape=shape, dtype=dtype, out_sharding=out_sharding)
 
@@ -172,13 +172,13 @@ def empty_like(
 
     Args:
         a: NamedArray-like object with ``shape`` and ``dtype`` attributes.
-        shape: optionally override the shape of the created array.
-        dtype: optionally override the dtype of the created array.
-        out_sharding: optional :class:`~lynqx.PM`, :class:`~jax.P` or :class:`~jax.NamedSharding` specifying the
+        shape: Optionally override the shape of the created array.
+        dtype: Optionally override the dtype of the created array.
+        out_sharding: Optional :class:`~lynqx.PM`, :class:`~jax.P` or :class:`~jax.NamedSharding` specifying the
             sharding of the output array.
 
     Returns:
-        Array of the specified shape and dtype, on the specified device if specified.
+        A ``NamedArray`` of the specified shape and dtype, on the specified device if specified.
     """
 
     return full_like(a, 0.0, shape=shape, dtype=dtype, out_sharding=out_sharding)
@@ -196,14 +196,14 @@ def full_like(
 
     Args:
         a: NamedArray-like object with ``shape`` and ``dtype`` attributes.
-        fill_value: scalar or array with which to fill the created array.
-        shape: optionally override the shape of the created array.
-        dtype: optionally override the dtype of the created array.
-        out_sharding: optional :class:`~lynqx.PM`, :class:`~jax.P` or :class:`~jax.NamedSharding` specifying the
+        fill_value: Scalar or array with which to fill the created array.
+        shape: Optionally override the shape of the created array.
+        dtype: Optionally override the dtype of the created array.
+        out_sharding: Optional :class:`~lynqx.PM`, :class:`~jax.P` or :class:`~jax.NamedSharding` specifying the
             sharding of the output array.
 
     Returns:
-        Array of the specified shape and dtype, on the specified device if specified.
+        A ``NamedArray`` of the specified shape and dtype, on the specified device if specified.
     """
 
     named, fill_named = util.ensure_named("full_like", a, fill_value)
@@ -228,6 +228,8 @@ def iota(
         axis: optional axis to increment along. Must be specified if `shape` has more than one axis.
         dtype: optional dtype for the created array.
 
+    Returns:
+        A ``NamedArray`` of ``axis.size`` spaced values, separated by `1`.
     """
 
     shape = axis_shape_to_tuple(shape)
@@ -272,8 +274,7 @@ def arange(
         step: optional end on the interval, exclusive.
 
     Returns:
-        Array of evernly spaced values from `start`, separated by `axis.size` values of
-        `step`
+        A ``NamedArray`` of ``axis.size`` spaced values, separated by ``step`` (defaults to ``1.0``).
     """
 
     if start is None:
