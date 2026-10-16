@@ -510,8 +510,9 @@ def diagonal(
 
     batch_axes = remove_axes(a.axes, (axis1, axis2))
     idx0, idx1 = axis_indices(a.axes, (axis1, axis2))
+    n0, n1 = a.axes[idx0].size, a.axes[idx1].size
 
-    diag_axis_size = min(a.axes[idx0].size, a.axes[idx1].size) - abs(offset)
+    diag_axis_size = min(n0, n1 - offset) if offset >= 0 else min(n0 + offset, n1)
     diag_axis = util.resolve_new_axis(diagonal, diag_axis_size, "diagonal", "diagonal")
 
     out_shape = batch_axes + (diag_axis,)
