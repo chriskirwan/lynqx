@@ -535,7 +535,7 @@ def _tri_mask(array: NamedArray, axis1: AxisSelector, axis2: AxisSelector, k: in
     col = creation.iota(spec, col_pos, dtype=jnp.int32)
 
     diff = row - col
-    mask = (diff >= k) if upper else (diff <= k)
+    mask = (diff <= k) if upper else (diff >= k)
     return broadcast_to(mask, array.axes)
 
 
