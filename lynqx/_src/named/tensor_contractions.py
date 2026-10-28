@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Hashable, Sequence
 from typing import NamedTuple
 
 import equinox as eqx
@@ -310,3 +310,188 @@ def trace(
     jax_array = jnp.trace(a.array, offset, idx1, idx2, dtype=dtype)
     out_axes = remove_axes(a.axes, (idx1, idx2))
     return constructors.array(jax_array, out_axes)
+
+
+_Node = tuple[int, int]  # (operand index, axis position within that operand)
+
+MultiDotAxes = Sequence[tuple[Sequence[AxisSelector], Sequence[AxisSelector]]]
+
+
+def _chain_sublists(
+    operand_axes: tuple[tuple[Axis, ...], ...],
+    axes: tuple[tuple[tuple[AxisSelector, ...], tuple[AxisSelector, ...]], ...],
+    allow_positional_fallback: bool = True,
+) -> tuple[list[list[int]], list[int], tuple[Axis, ...]]:
+    """Translate a chain contraction spec into `einsum` sublists, i.e. the interleaved "explicit form via indices".
+
+    Returns ``(sublists, out_sublist, out_axes)``: one list of integer labels per operand, the labels of the output
+    and the output axes. Axes carrying the same label are the same index in the contraction.
+
+    ``axes[k]`` contracts operand ``k`` (lhs) with operand ``k + 1`` (rhs). If ``len(axes) == len(operands)``
+    the final spec contracts the last operand with the first, closing the chain into a ring (a trace). Both ends of a
+    contracted pair share one label that does not appear in the output.
+
+    Every axis not claimed by a contraction is *free*. Free axes that are **named** and share a name across operands
+    are matched as batch axes (kept once in the output), mirroring `matmul`/`vecdot`. With
+    `allow_positional_fallback`, remaining anonymous free axes are right-aligned (same trailing distance in each
+    operand's original axes) and matched by position too. Contracted axes never take part in matching, so the usual
+    ``(a, b) @ (a, b)`` matrix chain works without name collisions.
+
+    Output axis order: batch axes (first-appearance order), then the remaining free axes in operand order.
+
+    `axes` must already be normalised to tuples of selectors (see `multi_dot`).
+    """
+    n = len(operand_axes)
+    if len(axes) not in (n - 1, n):
+        raise ValueError(
+            f"`axes` must have one (lhs, rhs) spec per adjacent pair: expected {n - 1} (open chain) "
+            f"or {n} (closed ring) for {n} operands, got {len(axes)}"
+        )
+
+    labels: dict[Hashable, int] = {}
+
+    def label(key: Hashable) -> int:
+        return labels.setdefault(key, len(labels))
+
+    def resolve(op: int, sel: tuple[AxisSelector, ...], spec_idx: int, side: str) -> tuple[int, ...]:
+        if not sel:
+            return ()
+        raw = axis_indices(operand_axes[op], sel)
+        if any(i is None for i in raw):
+            missing = [s for s, i in zip(sel, raw) if i is None]
+            raise ValueError(f"axes[{spec_idx}] {side}: could not resolve {missing} in operand {op}")
+        return tuple(raw)
+
+    label_of: dict[_Node, int] = {}
+
+    # 1. Explicit contractions: the two ends of each contracted pair get one fresh label.
+    for k, (lhs_sel, rhs_sel) in enumerate(axes):
+        lhs_op, rhs_op = k, (k + 1) % n
+        if len(lhs_sel) != len(rhs_sel):
+            raise ValueError(
+                f"axes[{k}]: lhs and rhs contracting axes must be the same length, "
+                f"got {len(lhs_sel)} vs {len(rhs_sel)}"
+            )
+        lhs_idx = resolve(lhs_op, lhs_sel, k, "lhs")
+        rhs_idx = resolve(rhs_op, rhs_sel, k, "rhs")
+        for p, (i, j) in enumerate(zip(lhs_idx, rhs_idx)):
+            lax_, rax_ = operand_axes[lhs_op][i], operand_axes[rhs_op][j]
+            if lax_.size != rax_.size:
+                raise ValueError(f"axes[{k}]: contracting axis size mismatch: `{lax_}` vs `{rax_}`")
+            for node in ((lhs_op, i), (rhs_op, j)):
+                if node in label_of:
+                    raise ValueError(
+                        f"axes[{k}]: axis `{operand_axes[node[0]][node[1]]}` of operand {node[0]} "
+                        "is contracted more than once"
+                    )
+                label_of[node] = label(("contract", k, p))
+
+    # 2. Free axes: named axes match by name, anonymous axes (optionally) by distance from the end of their operand.
+    #    These key spaces are disjoint from each other and from the contracted axes, so a plain dict suffices.
+    groups: dict[int, list[Axis]] = {}  # label -> the free axes carrying it
+    for k, op_axes in enumerate(operand_axes):
+        for i, ax in enumerate(op_axes):
+            if (k, i) in label_of:
+                continue
+            if ax.name is not None:
+                key: Hashable = ("name", ax.name)
+            elif allow_positional_fallback:
+                key = ("dist", len(op_axes) - 1 - i)
+            else:
+                key = ("free", k, i)
+            lab = label_of[(k, i)] = label(key)
+            group = groups.setdefault(lab, [])
+            if group and group[0].size != ax.size:
+                raise ValueError(f"Batch axis size mismatch: `{group[0]}` vs `{ax}`")
+            group.append(ax)
+
+    # 3. Output: batch axes (label on several operands) first, then the remaining free axes.
+    batch = [lab for lab, group in groups.items() if len(group) > 1]
+    single = [lab for lab, group in groups.items() if len(group) == 1]
+    out_sublist = batch + single
+    out_axes = tuple(groups[lab][0] for lab in out_sublist)
+
+    sublists = [[label_of[(k, i)] for i in range(len(op_axes))] for k, op_axes in enumerate(operand_axes)]
+    return sublists, out_sublist, out_axes
+
+
+@eqx.filter_jit
+def _multi_dot(
+    arrays: tuple[NamedArray, ...],
+    axes: tuple[tuple[tuple[AxisSelector, ...], tuple[AxisSelector, ...]], ...],
+    optimize: str | tuple[tuple[int, ...], ...],
+    precision: PrecisionLike = None,
+    preferred_element_type: DTypeLike | None = None,
+    *,
+    allow_positional_fallback: bool = True,
+    out_sharding: ShardingLike | None = None,
+) -> NamedArray:
+    sublists, out_sublist, out_axes = _chain_sublists(tuple(a.axes for a in arrays), axes, allow_positional_fallback)
+
+    canonical_sharding = canonicalize_sharding(out_axes, out_sharding, "multi_dot")
+    path = optimize if isinstance(optimize, str) else list(optimize)
+    # `jnp.einsum` also takes the interleaved ``op0, sublist0, op1, sublist1, ..., out_sublist`` form, so no subscript
+    # string is built. It hands path search to `opt_einsum.contract_path` (shapes only, at trace time) and runs each
+    # pairwise step through `lax.dot_general`, which is what makes `precision`, `preferred_element_type` and
+    # `out_sharding` apply.
+    operands = [x for a, sublist in zip(arrays, sublists) for x in (a.array, sublist)]
+    jax_array = jnp.einsum(
+        *operands,
+        out_sublist,
+        optimize=path,
+        precision=precision,
+        preferred_element_type=preferred_element_type,
+        out_sharding=canonical_sharding,
+    )
+    return constructors.array(jax_array, out_axes)
+
+
+def multi_dot(
+    *arrays: NamedArrayLike,
+    axes: MultiDotAxes,
+    optimize: str | Sequence[tuple[int, ...]] = "auto",
+    precision: PrecisionLike = None,
+    preferred_element_type: DTypeLike | None = None,
+    allow_positional_fallback: bool = True,
+    out_sharding: ShardingLike | None = None,
+) -> NamedArray:
+    """Contract a chain of arrays, choosing the pairwise contraction order with `opt_einsum`.
+
+    `axes[k]` is a ``(lhs_axes, rhs_axes)`` pair giving the axes of ``arrays[k]`` and ``arrays[k + 1]`` to contract.
+    Pass one extra spec, contracting ``arrays[-1]`` with ``arrays[0]``, to close the chain into a ring (a trace).
+
+    Free named axes with the same name on several operands are treated as batch axes and appear once in the output
+    (batch axes first, then remaining free axes in operand order). With `allow_positional_fallback` (default), free
+    anonymous axes are right-aligned across operands and matched by position, so ``f32[..., ?, ?]`` chains batch over
+    the leading dims. Anonymous axes are matched by distance from the end of each operand's original axes, before
+    contraction. No conjugation is
+    applied; conjugate/transpose operands beforehand (e.g. for ``U^dagger``).
+
+    ``optimize`` is anything `opt_einsum` accepts as a path strategy (``"auto"``, ``"optimal"``, ``"greedy"``,
+    ``"dp"``, ...) or an explicit path (a sequence of index tuples).
+
+    Example (open plaquette, then traced at the end)::
+
+        link = (("b",), ("a",))
+        P = multi_dot(U_mu, U_nu_shifted, Ud_mu_shifted, Ud_nu, axes=(link, link, link))
+        # P has axes (x, y, z, t, a, b)
+
+        # or close the ring directly and let opt_einsum order the whole trace:
+        tr_P = multi_dot(U_mu, U_nu_shifted, Ud_mu_shifted, Ud_nu, axes=(link, link, link, (("b",), ("a",))))
+    """
+    if len(arrays) < 2:
+        raise ValueError(f"`multi_dot` requires at least two arrays, got {len(arrays)}")
+
+    named = util.ensure_named("multi_dot", *arrays)
+    spec = tuple((axis_selection_to_tuple(lhs), axis_selection_to_tuple(rhs)) for lhs, rhs in axes)
+    opt = optimize if isinstance(optimize, str) else tuple(tuple(p) for p in optimize)
+
+    return _multi_dot(
+        tuple(named),
+        spec,
+        opt,
+        precision,
+        preferred_element_type,
+        allow_positional_fallback=allow_positional_fallback,
+        out_sharding=out_sharding,
+    )
