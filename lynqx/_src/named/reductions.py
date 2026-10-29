@@ -4,8 +4,15 @@ import jax.numpy as jnp
 from jax.typing import DTypeLike
 
 from lynqx._src.axis_util import axis_indices, axis_selection_to_tuple, remove_axes
-from lynqx._src.named import constructors, operations, util
-from lynqx._src.typing import AxisLike, AxisSelection, NamedArray, NamedArrayLike, ScalarLike
+from lynqx._src.named import constructors, creation, operations, util
+from lynqx._src.typing import (
+    AxisSelection,
+    AxisSelector,
+    NamedArray,
+    NamedArrayLike,
+    ScalarLike,
+    ShardingLike,
+)
 
 
 py_any = any
@@ -167,7 +174,7 @@ def any(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A boolean named array containing the result.
+        A boolean ``NamedArray`` containing the result.
     """
     return wrap_reduction_call(jnp.any)(array, axis, keepdims=keepdims, where=where)
 
@@ -188,9 +195,33 @@ def all(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A boolean named array containing the result.
+        A boolean ``NamedArray`` containing the result.
     """
     return wrap_reduction_call(jnp.all)(array, axis, keepdims=keepdims, where=where)
+
+
+def average(
+    array: NamedArrayLike,
+    axis: AxisSelection | None = None,
+    weights: NamedArrayLike | None = None,
+    returned: bool = False,
+    keepdims: bool = False,
+):
+    named = util.ensure_named("average", array)
+
+    if weights is None:
+        avg = mean(named, axis, keepdims=keepdims)
+        if not returned:
+            return avg
+        # every element has weight 1, so the weight sum is the reduced count
+        w = creation.ones_like(named)
+    else:
+        w = operations.broadcast_to(util.ensure_named("average", weights), named.axes)
+        avg = wrap_reduction_call(jnp.average, supports_where=False)(named, axis, keepdims=keepdims, weights=w.array)
+        if not returned:
+            return avg
+
+    return avg, sum(w, axis, keepdims=keepdims)
 
 
 def sum(
@@ -214,7 +245,7 @@ def sum(
         promote_integers: Whether to promote integer inputs.
 
     Returns:
-        A named array containing the sum.
+        A ``NamedArray`` containing the sum along the given axis.
     """
     return wrap_reduction_call(jnp.sum, supports_initial=True)(
         array, axis, dtype=dtype, initial=initial, keepdims=keepdims, where=where, promote_integers=promote_integers
@@ -242,7 +273,7 @@ def prod(
         promote_integers: Whether to promote integer inputs.
 
     Returns:
-        A named array containing the product.
+        A ``NamedArray`` containing the product.
     """
     return wrap_reduction_call(jnp.prod, supports_initial=True)(
         array, axis, initial=initial, keepdims=keepdims, where=where, dtype=dtype, promote_integers=promote_integers
@@ -267,9 +298,209 @@ def mean(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the mean.
+        A ``NamedArray`` containing the mean.
     """
     return wrap_reduction_call(jnp.mean)(array, axis, keepdims=keepdims, where=where, dtype=dtype)
+
+
+def median(array: NamedArrayLike, axis: AxisSelection | None = None, keepdims: bool = False):
+    """Returns the median of array elements along a given
+
+    Args:
+        array: Input array.
+        axis: Axis along which the median to be computed. If None, median is computed for the flattened array.
+        keepdims: Whether to retain reduced axes with size one.
+    """
+    return wrap_reduction_call(jnp.median)(array, axis, keepdims=keepdims)
+
+
+def nanmean(
+    array: NamedArrayLike,
+    axis: AxisSelection | None = None,
+    dtype: DTypeLike | None = None,
+    keepdims: bool = False,
+    *,
+    where: NamedArrayLike | None = None,
+) -> NamedArray:
+    """Compute the arithmetic mean over the selected axes, ignoring NaNs.
+
+    Args:
+        array: Input array.
+        axis: Axis or axes to reduce, or ``None`` for all axes.
+        dtype: Dtype of the result.
+        keepdims: Whether to retain reduced axes with size one.
+        where: Optional boolean mask selecting elements to include.
+
+    Returns:
+        A ``NamedArray`` containing the mean.
+    """
+    return wrap_reduction_call(jnp.nanmean)(array, axis, keepdims=keepdims, where=where, dtype=dtype)
+
+
+def nanmedian(array: NamedArrayLike, axis: AxisSelection | None = None, keepdims: bool = False):
+    """Returns the median of array elements along a given, ignoring NaNs.
+
+    Args:
+        array: Input array.
+        axis: Axis along which the median to be computed. If None, median is computed for the flattened array.
+        keepdims: Whether to retain reduced axes with size one.
+    """
+    return wrap_reduction_call(jnp.nanmedian)(array, axis, keepdims=keepdims)
+
+
+def _quantile_like(
+    name: str,
+    fn: Callable,
+    a: NamedArrayLike,
+    q: NamedArrayLike,
+    axis: AxisSelection | None,
+    method: str,
+    keepdims: bool,
+    weights: NamedArrayLike | None,
+    index: int,
+    out_sharding: ShardingLike | None,
+) -> NamedArray:
+    a, q = util.ensure_named(name, a, q)
+
+    if q.ndim > 1:
+        raise ValueError(f"{name}: `q` must be a scalar or a 1D array, got {q.ndim} axes")
+
+    if axis is None:
+        jax_axis = None
+        reduced = set(range(a.ndim))
+    else:
+        indices = axis_indices(a.axes, axis_selection_to_tuple(axis))  # raises if a selector can't be resolved
+        if not indices:
+            raise ValueError(f"{name}: `axis` selects no axes; use `axis=None` to reduce over all of them")
+        jax_axis = indices[0] if len(indices) == 1 else tuple(indices)
+        reduced = set(indices)
+
+    if keepdims:
+        result_axes = tuple(ax.resize(size=1) if i in reduced else ax for i, ax in enumerate(a.axes))
+    else:
+        result_axes = tuple(ax for i, ax in enumerate(a.axes) if i not in reduced)
+
+    kwargs = {}
+    if weights is not None:
+        w = operations.broadcast_to(util.ensure_named(name, weights), a.axes)
+        kwargs["weights"] = w.array
+
+    result = fn(a.array, q.array, axis=jax_axis, method=method, keepdims=keepdims, **kwargs)
+
+    if q.ndim == 1:
+        q_axis = q.axes[0]
+        if q_axis.name is not None and q_axis.name in (ax.name for ax in result_axes):
+            raise ValueError(f"{name}: the axis of `q` ({q_axis.name!r}) clashes with an axis of the result")
+        position = operations._normalize_insert_index(index, len(result_axes), name)
+        # JAX puts the `q` axis first
+        result = jnp.moveaxis(result, 0, position)
+        result_axes = result_axes[:position] + (q_axis,) + result_axes[position:]
+
+    return constructors.array(result, result_axes, out_sharding=out_sharding)
+
+
+def percentile(
+    a: NamedArrayLike,
+    q: NamedArrayLike,
+    axis: AxisSelection | None = None,
+    method: str = "linear",
+    keepdims: bool = False,
+    *,
+    weights: NamedArrayLike | None = None,
+    index: int = 0,
+    out_sharding: ShardingLike | None = None,
+) -> NamedArray:
+    """Compute the ``q``-th percentile of the data along the selected axes.
+
+    Args:
+        a: Input array.
+        q: Percentile(s) in ``[0, 100]``. Either a scalar or a 1D array; the axis of a 1D ``q`` (including its
+            name, if it has one) becomes a new axis of the result.
+        axis: Axis or axes to reduce, or ``None`` for all axes.
+        method: Interpolation method, as in `jax.numpy.percentile`.
+        keepdims: Whether to retain reduced axes with size one.
+        weights: Optional weights, broadcast against ``a``. As in NumPy, only supported with
+            ``method="inverted_cdf"``.
+        index: Position of ``q``'s axis in the result (only used when ``q`` is 1D). Negative values count from
+            the end of the *result*. Defaults to ``0``, as in NumPy.
+        out_sharding: Optional sharding specification for the output array.
+
+    Returns:
+        A ``NamedArray`` of percentiles.
+    """
+    return _quantile_like("percentile", jnp.percentile, a, q, axis, method, keepdims, weights, index, out_sharding)
+
+
+def quantile(
+    a: NamedArrayLike,
+    q: NamedArrayLike,
+    axis: AxisSelection | None = None,
+    method: str = "linear",
+    keepdims: bool = False,
+    *,
+    weights: NamedArrayLike | None = None,
+    index: int = 0,
+    out_sharding: ShardingLike | None = None,
+) -> NamedArray:
+    """Compute the ``q``-th quantile of the data along the selected axes.
+
+    Identical to `percentile` except that ``q`` is in ``[0, 1]``.
+
+    Args:
+        a: Input array.
+        q: Quantile(s) in ``[0, 1]``. Either a scalar or a 1D array; the axis of a 1D ``q`` (including its name,
+            if it has one) becomes a new axis of the result.
+        axis: Axis or axes to reduce, or ``None`` for all axes.
+        method: Interpolation method, as in `jax.numpy.quantile`.
+        keepdims: Whether to retain reduced axes with size one.
+        weights: Optional weights, broadcast against ``a``. As in NumPy, only supported with
+            ``method="inverted_cdf"``.
+        index: Position of ``q``'s axis in the result (only used when ``q`` is 1D). Negative values count from
+            the end of the *result*. Defaults to ``0``, as in NumPy.
+        out_sharding: Optional sharding specification for the output array.
+
+    Returns:
+        A ``NamedArray`` of quantiles.
+    """
+    return _quantile_like("quantile", jnp.quantile, a, q, axis, method, keepdims, weights, index, out_sharding)
+
+
+def nanpercentile(
+    a: NamedArrayLike,
+    q: NamedArrayLike,
+    axis: AxisSelection | None = None,
+    method: str = "linear",
+    keepdims: bool = False,
+    *,
+    weights: NamedArrayLike | None = None,
+    index: int = 0,
+    out_sharding: ShardingLike | None = None,
+) -> NamedArray:
+    """Compute the ``q``-th percentile of the data along the selected axes, ignoring NaNs.
+
+    See `percentile` for the arguments.
+    """
+    return _quantile_like(
+        "nanpercentile", jnp.nanpercentile, a, q, axis, method, keepdims, weights, index, out_sharding
+    )
+
+
+def nanquantile(
+    a: NamedArrayLike,
+    q: NamedArrayLike,
+    axis: AxisSelection | None = None,
+    method: str = "linear",
+    keepdims: bool = False,
+    *,
+    weights: NamedArrayLike | None = None,
+    index: int = 0,
+    out_sharding: ShardingLike | None = None,
+) -> NamedArray:
+    """Compute the ``q``-th quantile of the data along the selected axes, ignoring NaNs.
+
+    See `quantile` for the arguments.
+    """
+    return _quantile_like("nanquantile", jnp.nanquantile, a, q, axis, method, keepdims, weights, index, out_sharding)
 
 
 # TODO: support `mean` parameter
@@ -295,7 +526,7 @@ def std(
         correction: Alternative degrees-of-freedom correction.
 
     Returns:
-        A named array containing the standard deviation.
+        A ``NamedArray`` containing the standard deviation.
     """
     return wrap_reduction_call(jnp.std)(
         array, axis, ddof=ddof, keepdims=keepdims, correction=correction, where=where, dtype=dtype
@@ -324,7 +555,7 @@ def var(
         correction: Alternative degrees-of-freedom correction.
 
     Returns:
-        A named array containing the variance.
+        A ``NamedArray`` containing the variance.
     """
     return wrap_reduction_call(jnp.var)(
         array, axis, ddof=ddof, keepdims=keepdims, correction=correction, where=where, dtype=dtype
@@ -348,7 +579,7 @@ def min(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the minimum.
+        A ``NamedArray`` containing the minimum.
     """
     return wrap_reduction_call(jnp.min, supports_initial=True)(
         array, axis, keepdims=keepdims, initial=initial, where=where
@@ -372,7 +603,7 @@ def max(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the maximum.
+        A ``NamedArray`` containing the maximum.
     """
     return wrap_reduction_call(jnp.max, supports_initial=True)(
         array, axis, initial=initial, keepdims=keepdims, where=where
@@ -396,7 +627,7 @@ def amin(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the minimum.
+        A ``NamedArray`` containing the minimum.
     """
     return wrap_reduction_call(jnp.amin, supports_initial=True)(
         array, axis, initial=initial, keepdims=keepdims, where=where
@@ -420,7 +651,7 @@ def amax(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the maximum.
+        A ``NamedArray`` containing the maximum.
     """
     return wrap_reduction_call(jnp.amax, supports_initial=True)(
         array, axis, initial=initial, keepdims=keepdims, where=where
@@ -440,7 +671,7 @@ def argmin(
         keepdims: Whether to retain reduced axes with size one.
 
     Returns:
-        A named integer array containing the minimum indices.
+        An integer ``NamedArray`` containing the minimum indices.
     """
     return wrap_reduction_call(jnp.argmin, single_axis_only=True, supports_where=False)(array, axis, keepdims=keepdims)
 
@@ -458,7 +689,7 @@ def argmax(
         keepdims: Whether to retain reduced axes with size one.
 
     Returns:
-        A named integer array containing the maximum indices.
+        An integer ``NamedArray`` containing the maximum indices.
     """
     return wrap_reduction_call(jnp.argmax, single_axis_only=True, supports_where=False)(array, axis, keepdims=keepdims)
 
@@ -476,12 +707,12 @@ def ptp(
         keepdims: Whether to retain reduced axes with size one.
 
     Returns:
-        A named array containing maximum minus minimum.
+        A ``NamedArray`` containing maximum minus minimum.
     """
     return wrap_reduction_call(jnp.ptp, supports_where=False)(array, axis, keepdims=keepdims)
 
 
-def nanargmax(array: NamedArrayLike, axis: AxisLike | None = None, *, keepdims: bool = False) -> NamedArray:
+def nanargmax(array: NamedArrayLike, axis: AxisSelector | None = None, *, keepdims: bool = False) -> NamedArray:
     """Return indices of maximum values while ignoring NaNs.
 
     Args:
@@ -490,14 +721,14 @@ def nanargmax(array: NamedArrayLike, axis: AxisLike | None = None, *, keepdims: 
         keepdims: Whether to retain the reduced axis with size one.
 
     Returns:
-        A named integer array containing the maximum indices.
+        An integer ``NamedArray`` containing the maximum indices.
     """
     return wrap_reduction_call(jnp.nanargmax, single_axis_only=True, supports_where=False)(
         array, axis, keepdims=keepdims
     )
 
 
-def nanargmin(array: NamedArrayLike, axis: AxisLike | None = None, *, keepdims: bool = False) -> NamedArray:
+def nanargmin(array: NamedArrayLike, axis: AxisSelector | None = None, *, keepdims: bool = False) -> NamedArray:
     """Return indices of minimum values while ignoring NaNs.
 
     Args:
@@ -506,7 +737,7 @@ def nanargmin(array: NamedArrayLike, axis: AxisLike | None = None, *, keepdims: 
         keepdims: Whether to retain the reduced axis with size one.
 
     Returns:
-        A named integer array containing the minimum indices.
+        An integer ``NamedArray`` containing the minimum indices.
     """
     return wrap_reduction_call(jnp.nanargmin, single_axis_only=True, supports_where=False)(
         array, axis, keepdims=keepdims
@@ -515,7 +746,7 @@ def nanargmin(array: NamedArrayLike, axis: AxisLike | None = None, *, keepdims: 
 
 def nanmax(
     array: NamedArrayLike,
-    axis: AxisLike | None = None,
+    axis: AxisSelection | None = None,
     keepdims: bool = False,
     initial: NamedArrayLike | None = None,
     where: NamedArrayLike | None = None,
@@ -530,7 +761,7 @@ def nanmax(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the maximum.
+        A ``NamedArray`` containing the maximum.
     """
     return wrap_reduction_call(jnp.nanmax, supports_initial=True, supports_where=True)(
         array, axis, initial=initial, keepdims=keepdims, where=where
@@ -539,7 +770,7 @@ def nanmax(
 
 def nanmin(
     array: NamedArrayLike,
-    axis: AxisLike | None = None,
+    axis: AxisSelection | None = None,
     keepdims: bool = False,
     initial: NamedArrayLike | None = None,
     where: NamedArrayLike | None = None,
@@ -554,7 +785,7 @@ def nanmin(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the minimum.
+        A ``NamedArray`` containing the minimum.
     """
     return wrap_reduction_call(jnp.nanmin, supports_initial=True, supports_where=True)(
         array, axis, initial=initial, keepdims=keepdims, where=where
@@ -563,7 +794,7 @@ def nanmin(
 
 def nanprod(
     array: NamedArrayLike,
-    axis: AxisLike | None = None,
+    axis: AxisSelection | None = None,
     dtype: DTypeLike | None = None,
     keepdims: bool = False,
     where: NamedArrayLike | None = None,
@@ -578,14 +809,14 @@ def nanprod(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the product.
+        A ``NamedArray`` containing the product.
     """
     return wrap_reduction_call(jnp.nanprod)(array, axis, dtype=dtype, keepdims=keepdims, where=where)
 
 
 def nanstd(
     array: NamedArrayLike,
-    axis: AxisLike | None = None,
+    axis: AxisSelection | None = None,
     dtype: DTypeLike | None = None,
     keepdims: bool = False,
     where: NamedArrayLike | None = None,
@@ -600,14 +831,14 @@ def nanstd(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the standard deviation.
+        A ``NamedArray`` containing the standard deviation.
     """
     return wrap_reduction_call(jnp.nanstd)(array, axis, dtype=dtype, keepdims=keepdims, where=where)
 
 
 def nansum(
     array: NamedArrayLike,
-    axis: AxisLike | None = None,
+    axis: AxisSelection | None = None,
     dtype: DTypeLike | None = None,
     keepdims: bool = False,
     where: NamedArrayLike | None = None,
@@ -622,14 +853,14 @@ def nansum(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the sum.
+        A ``NamedArray`` containing the sum.
     """
     return wrap_reduction_call(jnp.nansum)(array, axis, dtype=dtype, keepdims=keepdims, where=where)
 
 
 def nanvar(
     array: NamedArrayLike,
-    axis: AxisLike | None = None,
+    axis: AxisSelection | None = None,
     dtype: DTypeLike | None = None,
     ddof: int = 0,
     keepdims: bool = False,
@@ -646,12 +877,12 @@ def nanvar(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the variance.
+        A ``NamedArray`` containing the variance.
     """
     return wrap_reduction_call(jnp.nanvar)(array, axis, dtype=dtype, ddof=ddof, keepdims=keepdims, where=where)
 
 
-def cumsum(array: NamedArrayLike, axis: AxisLike, dtype: DTypeLike | None = None) -> NamedArray:
+def cumsum(array: NamedArrayLike, axis: AxisSelector, dtype: DTypeLike | None = None) -> NamedArray:
     """Return the cumulative sum along an axis.
 
     Args:
@@ -660,12 +891,12 @@ def cumsum(array: NamedArrayLike, axis: AxisLike, dtype: DTypeLike | None = None
         dtype: Dtype of the result.
 
     Returns:
-        A named array containing the cumulative sums.
+        A ``NamedArray`` containing the cumulative sums.
     """
     return wrap_axiswise_call(jnp.cumsum, single_axis_only=True)(array, axis, dtype=dtype)
 
 
-def cumprod(array: NamedArrayLike, axis: AxisLike, dtype: DTypeLike | None = None) -> NamedArray:
+def cumprod(array: NamedArrayLike, axis: AxisSelector, dtype: DTypeLike | None = None) -> NamedArray:
     """Return the cumulative product along an axis.
 
     Args:
@@ -674,12 +905,12 @@ def cumprod(array: NamedArrayLike, axis: AxisLike, dtype: DTypeLike | None = Non
         dtype: Dtype of the result.
 
     Returns:
-        A named array containing the cumulative products.
+        A ``NamedArray`` containing the cumulative products.
     """
     return wrap_axiswise_call(jnp.cumprod, single_axis_only=True)(array, axis, dtype=dtype)
 
 
-def nancumsum(array: NamedArrayLike, axis: AxisLike, dtype: DTypeLike | None = None) -> NamedArray:
+def nancumsum(array: NamedArrayLike, axis: AxisSelector, dtype: DTypeLike | None = None) -> NamedArray:
     """Return the cumulative sum along an axis, treating NaNs as zero.
 
     Args:
@@ -688,12 +919,12 @@ def nancumsum(array: NamedArrayLike, axis: AxisLike, dtype: DTypeLike | None = N
         dtype: Dtype of the result.
 
     Returns:
-        A named array containing the cumulative sums.
+        A ``NamedArray`` containing the cumulative sums.
     """
     return wrap_axiswise_call(jnp.nancumsum, single_axis_only=True)(array, axis, dtype=dtype)
 
 
-def nancumprod(array: NamedArrayLike, axis: AxisLike, dtype: DTypeLike | None = None) -> NamedArray:
+def nancumprod(array: NamedArrayLike, axis: AxisSelector, dtype: DTypeLike | None = None) -> NamedArray:
     """Return the cumulative product along an axis, treating NaNs as one.
 
     Args:
@@ -702,7 +933,7 @@ def nancumprod(array: NamedArrayLike, axis: AxisLike, dtype: DTypeLike | None = 
         dtype: Dtype of the result.
 
     Returns:
-        A named array containing the cumulative products.
+        A ``NamedArray`` containing the cumulative products.
     """
     return wrap_axiswise_call(jnp.nancumprod, single_axis_only=True)(array, axis, dtype=dtype)
 
@@ -723,7 +954,7 @@ def sort(
         order: Field name for structured arrays.
 
     Returns:
-        A named array containing the sorted values.
+        A ``NamedArray`` containing the sorted values.
     """
     return wrap_axiswise_call(jnp.sort, single_axis_only=True)(array, axis, kind=kind, order=order)
 
@@ -746,7 +977,7 @@ def argsort(
         dtype: Dtype of the returned indices.
 
     Returns:
-        A named integer array containing the sorting indices.
+        An integer ``NamedArray`` containing the sorting indices.
     """
     return wrap_axiswise_call(jnp.argsort, single_axis_only=True)(array, axis, kind=kind, order=order, dtype=dtype)
 
@@ -764,7 +995,7 @@ def partition(
         axis: Axis along which to partition.
 
     Returns:
-        A named array containing the partitioned values.
+        A ``NamedArray`` containing the partitioned values.
     """
     return wrap_axiswise_call(jnp.partition, single_axis_only=True)(a, axis, kth=kth)
 
@@ -782,6 +1013,6 @@ def argpartition(
         axis: Axis along which to partition.
 
     Returns:
-        A named integer array containing the partitioning indices.
+        An integer ``NamedArray`` containing the partitioning indices.
     """
     return wrap_axiswise_call(jnp.argpartition, single_axis_only=True)(a, axis, kth=kth)
