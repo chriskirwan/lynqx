@@ -6,8 +6,8 @@ from jax.typing import DTypeLike
 from lynqx._src.axis_util import axis_indices, axis_selection_to_tuple, remove_axes
 from lynqx._src.named import constructors, creation, operations, util
 from lynqx._src.typing import (
-    AxisLike,
     AxisSelection,
+    AxisSelector,
     NamedArray,
     NamedArrayLike,
     ScalarLike,
@@ -707,12 +707,12 @@ def ptp(
         keepdims: Whether to retain reduced axes with size one.
 
     Returns:
-        A named array containing maximum minus minimum.
+        A ``NamedArray`` containing maximum minus minimum.
     """
     return wrap_reduction_call(jnp.ptp, supports_where=False)(array, axis, keepdims=keepdims)
 
 
-def nanargmax(array: NamedArrayLike, axis: AxisLike | None = None, *, keepdims: bool = False) -> NamedArray:
+def nanargmax(array: NamedArrayLike, axis: AxisSelector | None = None, *, keepdims: bool = False) -> NamedArray:
     """Return indices of maximum values while ignoring NaNs.
 
     Args:
@@ -721,14 +721,14 @@ def nanargmax(array: NamedArrayLike, axis: AxisLike | None = None, *, keepdims: 
         keepdims: Whether to retain the reduced axis with size one.
 
     Returns:
-        A named integer array containing the maximum indices.
+        An integer ``NamedArray`` containing the maximum indices.
     """
     return wrap_reduction_call(jnp.nanargmax, single_axis_only=True, supports_where=False)(
         array, axis, keepdims=keepdims
     )
 
 
-def nanargmin(array: NamedArrayLike, axis: AxisLike | None = None, *, keepdims: bool = False) -> NamedArray:
+def nanargmin(array: NamedArrayLike, axis: AxisSelector | None = None, *, keepdims: bool = False) -> NamedArray:
     """Return indices of minimum values while ignoring NaNs.
 
     Args:
@@ -746,7 +746,7 @@ def nanargmin(array: NamedArrayLike, axis: AxisLike | None = None, *, keepdims: 
 
 def nanmax(
     array: NamedArrayLike,
-    axis: AxisLike | None = None,
+    axis: AxisSelection | None = None,
     keepdims: bool = False,
     initial: NamedArrayLike | None = None,
     where: NamedArrayLike | None = None,
@@ -770,7 +770,7 @@ def nanmax(
 
 def nanmin(
     array: NamedArrayLike,
-    axis: AxisLike | None = None,
+    axis: AxisSelection | None = None,
     keepdims: bool = False,
     initial: NamedArrayLike | None = None,
     where: NamedArrayLike | None = None,
@@ -794,7 +794,7 @@ def nanmin(
 
 def nanprod(
     array: NamedArrayLike,
-    axis: AxisLike | None = None,
+    axis: AxisSelection | None = None,
     dtype: DTypeLike | None = None,
     keepdims: bool = False,
     where: NamedArrayLike | None = None,
@@ -809,14 +809,14 @@ def nanprod(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the product.
+        A ``NamedArray`` containing the product.
     """
     return wrap_reduction_call(jnp.nanprod)(array, axis, dtype=dtype, keepdims=keepdims, where=where)
 
 
 def nanstd(
     array: NamedArrayLike,
-    axis: AxisLike | None = None,
+    axis: AxisSelection | None = None,
     dtype: DTypeLike | None = None,
     keepdims: bool = False,
     where: NamedArrayLike | None = None,
@@ -831,14 +831,14 @@ def nanstd(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the standard deviation.
+        A ``NamedArray`` containing the standard deviation.
     """
     return wrap_reduction_call(jnp.nanstd)(array, axis, dtype=dtype, keepdims=keepdims, where=where)
 
 
 def nansum(
     array: NamedArrayLike,
-    axis: AxisLike | None = None,
+    axis: AxisSelection | None = None,
     dtype: DTypeLike | None = None,
     keepdims: bool = False,
     where: NamedArrayLike | None = None,
@@ -853,14 +853,14 @@ def nansum(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the sum.
+        A ``NamedArray`` containing the sum.
     """
     return wrap_reduction_call(jnp.nansum)(array, axis, dtype=dtype, keepdims=keepdims, where=where)
 
 
 def nanvar(
     array: NamedArrayLike,
-    axis: AxisLike | None = None,
+    axis: AxisSelection | None = None,
     dtype: DTypeLike | None = None,
     ddof: int = 0,
     keepdims: bool = False,
@@ -877,12 +877,12 @@ def nanvar(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the variance.
+        A ``NamedArray`` containing the variance.
     """
     return wrap_reduction_call(jnp.nanvar)(array, axis, dtype=dtype, ddof=ddof, keepdims=keepdims, where=where)
 
 
-def cumsum(array: NamedArrayLike, axis: AxisLike, dtype: DTypeLike | None = None) -> NamedArray:
+def cumsum(array: NamedArrayLike, axis: AxisSelector, dtype: DTypeLike | None = None) -> NamedArray:
     """Return the cumulative sum along an axis.
 
     Args:
@@ -891,12 +891,12 @@ def cumsum(array: NamedArrayLike, axis: AxisLike, dtype: DTypeLike | None = None
         dtype: Dtype of the result.
 
     Returns:
-        A named array containing the cumulative sums.
+        A ``NamedArray`` containing the cumulative sums.
     """
     return wrap_axiswise_call(jnp.cumsum, single_axis_only=True)(array, axis, dtype=dtype)
 
 
-def cumprod(array: NamedArrayLike, axis: AxisLike, dtype: DTypeLike | None = None) -> NamedArray:
+def cumprod(array: NamedArrayLike, axis: AxisSelector, dtype: DTypeLike | None = None) -> NamedArray:
     """Return the cumulative product along an axis.
 
     Args:
@@ -905,12 +905,12 @@ def cumprod(array: NamedArrayLike, axis: AxisLike, dtype: DTypeLike | None = Non
         dtype: Dtype of the result.
 
     Returns:
-        A named array containing the cumulative products.
+        A ``NamedArray`` containing the cumulative products.
     """
     return wrap_axiswise_call(jnp.cumprod, single_axis_only=True)(array, axis, dtype=dtype)
 
 
-def nancumsum(array: NamedArrayLike, axis: AxisLike, dtype: DTypeLike | None = None) -> NamedArray:
+def nancumsum(array: NamedArrayLike, axis: AxisSelector, dtype: DTypeLike | None = None) -> NamedArray:
     """Return the cumulative sum along an axis, treating NaNs as zero.
 
     Args:
@@ -919,12 +919,12 @@ def nancumsum(array: NamedArrayLike, axis: AxisLike, dtype: DTypeLike | None = N
         dtype: Dtype of the result.
 
     Returns:
-        A named array containing the cumulative sums.
+        A ``NamedArray`` containing the cumulative sums.
     """
     return wrap_axiswise_call(jnp.nancumsum, single_axis_only=True)(array, axis, dtype=dtype)
 
 
-def nancumprod(array: NamedArrayLike, axis: AxisLike, dtype: DTypeLike | None = None) -> NamedArray:
+def nancumprod(array: NamedArrayLike, axis: AxisSelector, dtype: DTypeLike | None = None) -> NamedArray:
     """Return the cumulative product along an axis, treating NaNs as one.
 
     Args:
