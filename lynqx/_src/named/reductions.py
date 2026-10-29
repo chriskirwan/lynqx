@@ -174,7 +174,7 @@ def any(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A boolean named array containing the result.
+        A boolean ``NamedArray`` containing the result.
     """
     return wrap_reduction_call(jnp.any)(array, axis, keepdims=keepdims, where=where)
 
@@ -245,7 +245,7 @@ def sum(
         promote_integers: Whether to promote integer inputs.
 
     Returns:
-        A named array containing the sum.
+        A ``NamedArray`` containing the sum along the given axis.
     """
     return wrap_reduction_call(jnp.sum, supports_initial=True)(
         array, axis, dtype=dtype, initial=initial, keepdims=keepdims, where=where, promote_integers=promote_integers
@@ -273,7 +273,7 @@ def prod(
         promote_integers: Whether to promote integer inputs.
 
     Returns:
-        A named array containing the product.
+        A ``NamedArray`` containing the product.
     """
     return wrap_reduction_call(jnp.prod, supports_initial=True)(
         array, axis, initial=initial, keepdims=keepdims, where=where, dtype=dtype, promote_integers=promote_integers
@@ -526,7 +526,7 @@ def std(
         correction: Alternative degrees-of-freedom correction.
 
     Returns:
-        A named array containing the standard deviation.
+        A ``NamedArray`` containing the standard deviation.
     """
     return wrap_reduction_call(jnp.std)(
         array, axis, ddof=ddof, keepdims=keepdims, correction=correction, where=where, dtype=dtype
@@ -555,7 +555,7 @@ def var(
         correction: Alternative degrees-of-freedom correction.
 
     Returns:
-        A named array containing the variance.
+        A ``NamedArray`` containing the variance.
     """
     return wrap_reduction_call(jnp.var)(
         array, axis, ddof=ddof, keepdims=keepdims, correction=correction, where=where, dtype=dtype
@@ -579,7 +579,7 @@ def min(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the minimum.
+        A ``NamedArray`` containing the minimum.
     """
     return wrap_reduction_call(jnp.min, supports_initial=True)(
         array, axis, keepdims=keepdims, initial=initial, where=where
@@ -603,7 +603,7 @@ def max(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the maximum.
+        A ``NamedArray`` containing the maximum.
     """
     return wrap_reduction_call(jnp.max, supports_initial=True)(
         array, axis, initial=initial, keepdims=keepdims, where=where
@@ -627,7 +627,7 @@ def amin(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the minimum.
+        A ``NamedArray`` containing the minimum.
     """
     return wrap_reduction_call(jnp.amin, supports_initial=True)(
         array, axis, initial=initial, keepdims=keepdims, where=where
@@ -651,7 +651,7 @@ def amax(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the maximum.
+        A ``NamedArray`` containing the maximum.
     """
     return wrap_reduction_call(jnp.amax, supports_initial=True)(
         array, axis, initial=initial, keepdims=keepdims, where=where
@@ -671,7 +671,7 @@ def argmin(
         keepdims: Whether to retain reduced axes with size one.
 
     Returns:
-        A named integer array containing the minimum indices.
+        An integer ``NamedArray`` containing the minimum indices.
     """
     return wrap_reduction_call(jnp.argmin, single_axis_only=True, supports_where=False)(array, axis, keepdims=keepdims)
 
@@ -689,7 +689,7 @@ def argmax(
         keepdims: Whether to retain reduced axes with size one.
 
     Returns:
-        A named integer array containing the maximum indices.
+        An integer ``NamedArray`` containing the maximum indices.
     """
     return wrap_reduction_call(jnp.argmax, single_axis_only=True, supports_where=False)(array, axis, keepdims=keepdims)
 
@@ -737,7 +737,7 @@ def nanargmin(array: NamedArrayLike, axis: AxisSelector | None = None, *, keepdi
         keepdims: Whether to retain the reduced axis with size one.
 
     Returns:
-        A named integer array containing the minimum indices.
+        An integer ``NamedArray`` containing the minimum indices.
     """
     return wrap_reduction_call(jnp.nanargmin, single_axis_only=True, supports_where=False)(
         array, axis, keepdims=keepdims
@@ -761,7 +761,7 @@ def nanmax(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the maximum.
+        A ``NamedArray`` containing the maximum.
     """
     return wrap_reduction_call(jnp.nanmax, supports_initial=True, supports_where=True)(
         array, axis, initial=initial, keepdims=keepdims, where=where
@@ -785,7 +785,7 @@ def nanmin(
         where: Optional boolean mask selecting elements to include.
 
     Returns:
-        A named array containing the minimum.
+        A ``NamedArray`` containing the minimum.
     """
     return wrap_reduction_call(jnp.nanmin, supports_initial=True, supports_where=True)(
         array, axis, initial=initial, keepdims=keepdims, where=where
@@ -933,7 +933,7 @@ def nancumprod(array: NamedArrayLike, axis: AxisSelector, dtype: DTypeLike | Non
         dtype: Dtype of the result.
 
     Returns:
-        A named array containing the cumulative products.
+        A ``NamedArray`` containing the cumulative products.
     """
     return wrap_axiswise_call(jnp.nancumprod, single_axis_only=True)(array, axis, dtype=dtype)
 
@@ -954,7 +954,7 @@ def sort(
         order: Field name for structured arrays.
 
     Returns:
-        A named array containing the sorted values.
+        A ``NamedArray`` containing the sorted values.
     """
     return wrap_axiswise_call(jnp.sort, single_axis_only=True)(array, axis, kind=kind, order=order)
 
@@ -977,7 +977,7 @@ def argsort(
         dtype: Dtype of the returned indices.
 
     Returns:
-        A named integer array containing the sorting indices.
+        An integer ``NamedArray`` containing the sorting indices.
     """
     return wrap_axiswise_call(jnp.argsort, single_axis_only=True)(array, axis, kind=kind, order=order, dtype=dtype)
 
@@ -995,7 +995,7 @@ def partition(
         axis: Axis along which to partition.
 
     Returns:
-        A named array containing the partitioned values.
+        A ``NamedArray`` containing the partitioned values.
     """
     return wrap_axiswise_call(jnp.partition, single_axis_only=True)(a, axis, kth=kth)
 
@@ -1013,6 +1013,6 @@ def argpartition(
         axis: Axis along which to partition.
 
     Returns:
-        A named integer array containing the partitioning indices.
+        An integer ``NamedArray`` containing the partitioning indices.
     """
     return wrap_axiswise_call(jnp.argpartition, single_axis_only=True)(a, axis, kth=kth)
