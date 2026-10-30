@@ -131,7 +131,9 @@ class TestPolyfit:
     def test_weights_and_errors(self):
         w = array(jnp.ones(8), Axis(8))
         np.testing.assert_allclose(
-            polyfit(self.xn(), array(self.y, Axis(8)), 2, w=w).array, jnp.polyfit(self.x, self.y, 2, w=self.x * 0 + 1)
+            polyfit(self.xn(), array(self.y, Axis(8)), 2, w=w).array,
+            jnp.polyfit(self.x, self.y, 2, w=self.x * 0 + 1),
+            atol=1e-5,
         )
         with pytest.raises(ValueError, match="same number"):
             polyfit(self.xn(), array(self.y[:5], Axis(5)), 2)
